@@ -102,6 +102,8 @@ internal sealed class AssistantHost : IDisposable
             StopMicrophone();
         };
         _controller.Trace += message => Log.Info(message);
+        _controller.ChoicesChanged += badges => Post(() => ChoicesChanged?.Invoke(badges));
+        _controller.Highlight += rect => Post(() => Highlight?.Invoke(rect));
         if (persistMemory && _memory is not null)
         {
             _controller.MemoryChanged += () => LearnedStore.Save(_memory);
@@ -152,6 +154,12 @@ internal sealed class AssistantHost : IDisposable
 
     /// <summary>Raised on the UI thread when dictation switches between English (false) and Hindi + English (true).</summary>
     public event Action<bool>? DictationLanguageChanged;
+
+    /// <summary>Raised on the UI thread with numbers to draw on screen (null hides them).</summary>
+    public event Action<IReadOnlyList<ChoiceBadge>?>? ChoicesChanged;
+
+    /// <summary>Raised on the UI thread with something to outline briefly (just clicked, selected, or focused).</summary>
+    public event Action<ScreenRect>? Highlight;
 
     /// <summary>True when dictation uses the Hindi + English model.</summary>
     public bool HinglishDictation => _hinglishDictation;

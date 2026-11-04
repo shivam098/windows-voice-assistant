@@ -153,6 +153,13 @@ internal sealed class TrayIcon : IDisposable
         WHILE TYPING (red) — pause briefly before each command
           “Send” / “Search”     “Scratch that”     “Clear box”
           “New line”            “Stop typing”      “Press tab”
+
+        NAVIGATE — after “Hey Jarvis”
+          “Go to the first tab” · “Go to the YouTube tab”
+          “Click New on the left” · “Click Library” · “Expand Sessions”
+          “Start typing in YouTube” · “Start typing in the message box”
+          “Show numbers” → say a number · “Hide numbers”
+          Delete / merge / sign out / pay → say “yes” to confirm
         """,
         "Voice Assistant — commands");
 

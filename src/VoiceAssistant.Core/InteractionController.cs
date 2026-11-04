@@ -10,7 +10,8 @@ public enum StatusKind
     Error,
 }
 
-public sealed record StatusUpdate(InteractionMode Mode, StatusKind Kind, string Message, string? Heard = null);
+/// <param name="Place">Where the assistant is acting, e.g. “Chrome › YouTube › Search”, after a navigation command.</param>
+public sealed record StatusUpdate(InteractionMode Mode, StatusKind Kind, string Message, string? Heard = null, string? Place = null);
 
 public sealed record ControllerOptions
 {
@@ -36,7 +37,7 @@ public sealed record ControllerOptions
 /// <summary>
 /// Owns the standby/command/dictation state machine. Not thread-safe: callers must invoke it from one serial queue.
 /// </summary>
-public sealed class InteractionController
+public sealed partial class InteractionController
 {
     private readonly IDesktop _desktop;
     private readonly AppCatalog _apps;
@@ -112,6 +113,7 @@ public sealed class InteractionController
     /// <summary>Call periodically: returns to standby when the wake word's command window has expired.</summary>
     public void Tick()
     {
+        ExpirePending();
         if (ExpireAwake())
         {
             Report(StatusKind.Info, IdleMode);
@@ -168,11 +170,19 @@ public sealed class InteractionController
             return;
         }
 
+        if (_confirm is not null && !(parsed.Commands.Count == 1 && parsed.Commands[0].Kind == CommandKind.Confirm))
+        {
+            // A destructive click waits only for the very next utterance to be "yes"; anything else drops it.
+            _confirm = null;
+        }
+
         if (parsed.IsEmpty)
         {
-            if (Mode == InteractionMode.Standby && _parser.Parse(transcript, InteractionMode.Command).Commands.Count > 0)
+            if (Mode == InteractionMode.Standby &&
+                _parser.Parse(transcript, InteractionMode.Command).Commands.Any(c => c.Kind is not (CommandKind.Confirm or CommandKind.Cancel or CommandKind.Choose or CommandKind.ShowNumbers or CommandKind.HideNumbers)))
             {
                 // A real command without the wake word: say why nothing happened instead of staying silent.
+                // ("yes", "no", "two" are everyday words: stay silent for those.)
                 Trace?.Invoke("standby: command without wake word");
                 Report(StatusKind.Info, $"Say “{_options.WakeWordLabel}” first, then the command.", heard);
             }
@@ -223,10 +233,22 @@ public sealed class InteractionController
             Awake();
         }
 
+        if (parsed.LeavesTyping && Mode == InteractionMode.Dictation)
+        {
+            // "Hey Jarvis, next tab" while typing: stop typing first, so dictation never lands in the new place.
+            Awake();
+        }
+
         var allSucceeded = true;
         foreach (var command in parsed.Commands)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (command.Kind is not (CommandKind.Choose or CommandKind.Confirm or CommandKind.Cancel or CommandKind.HideNumbers))
+            {
+                // Any other command makes numbered choices and pending confirmations stale.
+                ClearPending();
+            }
+
             var ok = await ExecuteAsync(command, heard, cancellationToken).ConfigureAwait(false);
             Trace?.Invoke($"command {command.Kind} {(ok ? "ok" : "failed")}{(parsed.FromLearnedPhrase ? " (learned phrase)" : string.Empty)}");
             if (!ok)
@@ -296,13 +318,25 @@ public sealed class InteractionController
 
     private async Task<bool> ExecuteAsync(VoiceCommand command, string heard, CancellationToken ct)
     {
+        if (Mode == InteractionMode.Dictation && command.Kind is CommandKind.OpenApp or CommandKind.SwitchToApp or CommandKind.SelectTab or CommandKind.Click or CommandKind.ShowNumbers)
+        {
+            // "Hey Jarvis, go to the first tab" while typing: stop typing first so nothing lands in the new place.
+            Awake();
+        }
+
+        if (MovesAway(command))
+        {
+            // The page or app under the typing target may change: "send" must not press Enter in the new place.
+            Unbind();
+        }
+
         switch (command.Kind)
         {
             case CommandKind.OpenApp:
-                return await OpenAsync(command.Argument ?? string.Empty, newWindow: true, heard, ct).ConfigureAwait(false);
+                return await NavigateAsync(command.Argument ?? string.Empty, newWindow: true, heard, ct).ConfigureAwait(false);
 
             case CommandKind.SwitchToApp:
-                return await OpenAsync(command.Argument ?? string.Empty, newWindow: false, heard, ct).ConfigureAwait(false);
+                return await NavigateAsync(command.Argument ?? string.Empty, newWindow: false, heard, ct).ConfigureAwait(false);
 
             case CommandKind.StartTyping:
                 return await StartTypingAsync(heard, ct).ConfigureAwait(false);
@@ -398,6 +432,35 @@ public sealed class InteractionController
                 PauseRequested?.Invoke();
                 return false;
 
+            case CommandKind.SelectTab:
+                return await SelectTabAsync(command.Target ?? new ElementTarget(command.Argument ?? string.Empty), heard, ct).ConfigureAwait(false);
+
+            case CommandKind.Click:
+                return await ClickAsync(command.Target ?? new ElementTarget(command.Argument ?? string.Empty), heard, minScore: NameMatcher.Fuzzy, ct).ConfigureAwait(false);
+
+            case CommandKind.FocusField:
+                return await FocusFieldAsync(command.Target ?? new ElementTarget(command.Argument ?? string.Empty), heard, ct).ConfigureAwait(false);
+
+            case CommandKind.ShowNumbers:
+                return await ShowNumbersAsync(heard, ct).ConfigureAwait(false);
+
+            case CommandKind.HideNumbers:
+                ClearPending();
+                Report(StatusKind.Info, "Numbers hidden.", heard);
+                return true;
+
+            case CommandKind.Choose:
+                return await ChooseAsync(int.Parse(command.Argument ?? "0", CultureInfo.InvariantCulture), heard, ct).ConfigureAwait(false);
+
+            case CommandKind.Confirm:
+                return await ConfirmAsync(heard, ct).ConfigureAwait(false);
+
+            case CommandKind.Cancel:
+                var hadPending = _choices.Count > 0 || _confirm is not null;
+                ClearPending();
+                Report(StatusKind.Info, hadPending ? "Cancelled." : "Nothing to cancel.", heard);
+                return hadPending;
+
             default:
                 return false;
         }
@@ -425,7 +488,12 @@ public sealed class InteractionController
                     return false;
                 }
 
-                Report(result.Success ? StatusKind.Success : StatusKind.Warning, result.Message, heard);
+                if (result.Success && result.Window is { } opened)
+                {
+                    SetPlace(opened, PlaceOf(opened, _apps.FindProfileForProcess(opened.ProcessName, opened.Title)));
+                }
+
+                Report(result.Success ? StatusKind.Success : StatusKind.Warning, result.Message, heard, result.Success ? _place : null);
                 return result.Success;
 
             case AppResolution.Ambiguous ambiguous:
@@ -457,12 +525,34 @@ public sealed class InteractionController
 
         if (profile?.SearchKeys is not null && profile.TextArea is null && prepared.FocusIsEditable == false)
         {
-            // Browsers: if the cursor isn't in a text box on the page, "start typing" means the address/search bar.
+            // Browsers: a known site's box ("start typing" on YouTube = its search box), then the page's own text
+            // boxes (the only one, or ask which), else the address/search bar.
+            if (SiteProfile.ForTitle(window.Title) is { } site && await FocusSiteBoxAsync(window, site, heard, ct).ConfigureAwait(false))
+            {
+                return true;
+            }
+
+            if (await PickTextBoxAsync(window, heard, ct, browser: true).ConfigureAwait(false) is { } pickedInPage)
+            {
+                return pickedInPage;
+            }
+
             return await FocusSearchAsync(heard, addressBar: false, ct).ConfigureAwait(false);
         }
 
+        if (profile?.TextArea is null && prepared.FocusIsEditable == false)
+        {
+            // Nothing editable has focus in an app we have no profile for: pick its text box, or ask which.
+            var picked = await PickTextBoxAsync(window, heard, ct).ConfigureAwait(false);
+            if (picked is not null)
+            {
+                return picked.Value;
+            }
+        }
+
         BindTarget(window, profile, prepared.HasTrailingText == true, searchField: false);
-        Report(StatusKind.Success, $"Typing into {profile?.Name ?? DisplayName(window)}. Say “stop typing” when done.", heard);
+        SetPlace(window, PlaceOf(window, profile));
+        Report(StatusKind.Success, $"Typing into “{profile?.Name ?? DisplayName(window)}”. Say “stop typing” when done.", heard, _place);
         return true;
     }
 
@@ -504,12 +594,14 @@ public sealed class InteractionController
         }
 
         BindTarget(window, profile, boxHadText: false, searchField: true);
-        Report(StatusKind.Success, addressBar ? "In the address bar. Say where to go, then “search”." : "In the search box. Say what to search for, then “search”.", heard);
+        SetPlace(window, $"{PlaceOf(window, profile)} › {(addressBar ? "Address bar" : "Search")}");
+        Report(StatusKind.Success, addressBar ? "In the address bar. Say where to go, then “search”." : "In the search box. Say what to search for, then “search”.", heard, _place);
         return true;
     }
 
     private void BindTarget(WindowRef window, AppEntry? profile, bool boxHadText, bool searchField)
     {
+        ClearPending();
         _target = window;
         _targetProfile = profile;
         _segments.Clear();
@@ -730,6 +822,6 @@ public sealed class InteractionController
     private static string DisplayName(WindowRef window) =>
         string.IsNullOrWhiteSpace(window.Title) ? window.ProcessName : window.Title;
 
-    private void Report(StatusKind kind, string message, string? heard = null) =>
-        Status?.Invoke(new StatusUpdate(Mode, kind, message, heard));
+    private void Report(StatusKind kind, string message, string? heard = null, string? place = null) =>
+        Status?.Invoke(new StatusUpdate(Mode, kind, message, heard, place));
 }

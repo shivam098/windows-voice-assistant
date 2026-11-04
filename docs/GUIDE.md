@@ -51,6 +51,15 @@ Say punctuation (“comma”, “question mark”, “new line”); “um/uh” 
 
 Speak naturally — “can you please open Notepad for me” works. If it doesn't understand something, say it another way within 30 seconds and it remembers the first phrase next time (tray → **Forget what I've learned** to reset).
 
+### Navigate: tabs, buttons, text boxes
+
+1. **Tabs:** “go to the first tab”, “last tab”, “go to the YouTube tab”, “go to the tab where WhatsApp is open”.
+2. **Click by name:** “click New on the left”, “click Library”, “select Pull requests”, “expand Sessions”. If two things have the same name, yellow numbers appear: say the number.
+3. **Type in the right place:** “start typing” picks the app's or site's box (or asks which); “start typing in YouTube”, “start typing in the message box”.
+4. **Show numbers:** “show numbers”, then say a number to click it; “hide numbers”.
+5. Destructive buttons (delete, merge, sign out, pay…) wait for you to say **“yes”**.
+6. The pill shows where you are: **📍 Google Chrome › YouTube › Search**.
+
 ---
 
 ## 3. Share with friends (portable zip)

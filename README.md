@@ -113,11 +113,37 @@ Speak naturally — polite padding is understood: *“Hey Jarvis, can you open N
 
 **Status pill:** light blue = waiting for “Hey Jarvis”, blue = listening for a command, red = typing/dictating, grey = paused. `Ctrl+Alt+Space` or a left-click on the tray icon pauses/resumes listening; push-to-talk works even while paused. Click **–** on the pill to hide it while idle: it then appears only for “Hey Jarvis”, `Ctrl+Win`, typing, and messages. Tray menu › **Always show status pill** brings it back.
 
+## 3. Navigate by voice: tabs, buttons, text boxes
+
+After “Hey Jarvis”, move around like you'd tell a person. Each command builds on where you are, and the pill shows it: **📍 Google Chrome › YouTube › Search**.
+
+| Say | Does |
+|---|---|
+| “Go to the first tab” / “second tab” / “last tab” / “tab 3” | Selects that tab in the browser window in front |
+| “Go to the YouTube tab” / “go to the tab where YouTube is open” | Finds the tab by its title in any Chrome, Edge or Firefox window (the front window wins ties) |
+| “Click New on the left” / “click Library” / “select Pull requests” / “expand Sessions” | Clicks it by name. “on the left/right/top/bottom”, “the second …” narrow it down |
+| “Go to Issues” | Clicks a button called Issues when no app or tab has that name |
+| “Start typing” | Puts the cursor in the right box: the app's message box, the site's box (YouTube/Google search, WhatsApp message…), the page's only box, or asks which |
+| “Start typing in YouTube” / “… in the message box” / “… in the first tab” | Goes there first, then starts typing |
+| “Show numbers” → “7” / “Hide numbers” | Numbers everything clickable; say a number to click it (text boxes start typing) |
+| “Click New” (two of them) → “two” | When a name matches several things, numbers appear on just those |
+| “Click Delete account” → “yes” | Anything like delete, merge, sign out, pay asks for “yes” first |
+| While typing: “Hey Jarvis, go to the first tab” | Stops typing, then switches |
+
+Every click is outlined briefly so you can see what happened. It works with apps that describe their buttons to Windows accessibility (most apps and all major browsers). Full behaviour: [docs/specs/navigation.md](docs/specs/navigation.md).
+
+```text
+"Hey Jarvis, open Chrome"  →  "Go to the first tab"  →  "Start typing"
+"Go to the tab where YouTube is open"  →  "Start typing"  →  "lofi music"  →  "Search"
+"Switch to GitHub Copilot"  →  "Click New on the left"  →  "Start typing"  →  "Fix the login test"  →  "Send"
+```
+
 ## Safety and privacy
 
 - **Bound to one window.** Voice dictation goes only to the window where you said “start typing”. If focus moves, nothing is typed or sent; the text is kept in memory (tray → *Copy text that wasn't typed*).
 - **Refuses** password fields and windows running as administrator. Voice dictation also refuses fields it can't verify; push-to-talk (an explicit key press) allows them.
 - **Whole-utterance commands only**: a sentence containing “send” never sends. Low-confidence commands are ignored.
+- **Clicks are checked**: destructive buttons (delete, merge, sign out, pay…) need a spoken “yes”, and nothing is clicked if another window came to the front.
 - **Music and noise are dropped** by Silero before transcription; long speech while waiting for a command (meetings) is skipped.
 - Runs unelevated. Logs (`%LOCALAPPDATA%\VoiceAssistant\logs`, kept 7 days) contain only states and timings — never words.
 - No speaker identification: anyone near the microphone can say “Hey Jarvis”. Pause listening in meetings.
@@ -162,7 +188,8 @@ Microphone ─┬─ (Ctrl+Win held) ─────────────► 
 | `src/VoiceAssistant.Core` | Parser, wake word, formatter, segmenter, controller — platform-independent, unit-tested |
 | `src/VoiceAssistant.Speech` | Whisper and Silero wrappers |
 | `src/VoiceAssistant.App` | Tray app, overlay, microphone, key hook, clipboard paste, UI Automation |
-| `tests/VoiceAssistant.Core.Tests` | xUnit tests |
+| `tests/VoiceAssistant.Core.Tests` | xUnit tests (the executable form of [docs/specs](docs/specs/README.md)) |
+| `tests/NavigationLab` | Test pages and a self-test script for voice navigation on real browsers |
 | `tools/SpeechBench` | Benchmarks, live microphone diagnostics, noisy-room replay |
 | `tools/ModelConvert` | Converts Hugging Face Whisper checkpoints to ggml (how the Hindi + English model is built) |
 
@@ -178,13 +205,19 @@ src\VoiceAssistant.App\bin\Debug\net10.0-windows\win-arm64\VoiceAssistant.exe --
 # Speech tools
 dotnet run --project tools/SpeechBench -c Release -r win-arm64 -- --live 30            # live mic diagnostics
 dotnet run --project tools/SpeechBench -c Release -r win-arm64 -- --mix noise.wav -22  # commands over room noise
+
+# Voice navigation acceptance test (opens its own Chrome window of test pages)
+.\tests\NavigationLab\run.ps1 -Exe src\VoiceAssistant.App\bin\Release\net10.0-windows\win-arm64\VoiceAssistant.exe
 ```
 
-Regenerate the logo with `powershell -File assets\make-logo.ps1`. See the **[step-by-step guide](docs/GUIDE.md)** (install, use, share, develop, contribute), [docs/BENCHMARKS.md](docs/BENCHMARKS.md), [docs/PRD.md](docs/PRD.md), and [docs/TECHNICAL-SPEC.md](docs/TECHNICAL-SPEC.md).
+**Specifications** for every platform (Windows now; macOS, Android, iOS next) are in **[docs/specs](docs/specs/README.md)**: product, dictation, voice commands, navigation, speech pipeline, safety and privacy, a porting guide, and acceptance tests. Change the spec in the same pull request as the behaviour.
+
+Regenerate the logo with `powershell -File assets\make-logo.ps1`. See the **[step-by-step guide](docs/GUIDE.md)** (install, use, share, develop, contribute), [docs/BENCHMARKS.md](docs/BENCHMARKS.md), and the design notes in [docs/design](docs/design).
 
 ## Known limitations
 
 - English, plus Hindi + English dictation (Alt+Shift+H); voice commands are English only. A headset works best in noisy rooms.
+- Clicking by name needs apps that expose accessibility names (most apps and all major browsers do). Apps drawn entirely on a canvas (some games, remote desktops) can't be clicked yet; there's no OCR or mouse grid.
 - Inline “scratch that” is rule-based: it removes the phrase before it, not a single corrected word (“meet at 2, scratch that, 3” keeps only “3”). Wispr's AI rewrites, tones/styles, and command-mode editing need a language model and aren't included.
 - Voice dictation inserts text after each pause (~1 s), not word by word. Push-to-talk inserts when you release the keys.
 - `Ctrl+Win` combinations used by Windows (e.g. `Ctrl+Win+D`) still work; the recording is discarded.
