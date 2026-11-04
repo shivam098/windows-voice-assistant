@@ -37,6 +37,8 @@ Friends don't need to install anything:
 
 They unzip it, double-click `VoiceAssistant.exe` (the app isn't code-signed, so Windows SmartScreen asks once: *More info → Run anyway*), and the speech models download on first run (~265 MB, SHA-256 verified). `README-FIRST.txt` in the zip explains the shortcuts. Use **win-x64** for Intel/AMD PCs and **win-arm64** for Snapdragon/ARM PCs. Ready-made zips are attached to the [GitHub releases](https://github.com/shivam098/windows-voice-assistant/releases).
 
+The speech engine needs the Microsoft Visual C++ runtime. Release zips bundle it (built by `.github/workflows/release.yml` on a clean Windows runner whenever a `v*` tag is pushed), so friends need nothing else. Locally, `package.ps1` bundles it when Visual Studio or Build Tools with the C++ workload is installed, and warns otherwise.
+
 ## 1. Dictate anywhere (Wispr-style)
 
 Put the cursor in any text box, then:
