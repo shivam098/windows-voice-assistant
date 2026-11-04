@@ -66,13 +66,19 @@ function Add-VcRuntime([string] $folder, [string] $rid) {
     $root = Find-VcRedistRoot
     $arch = $rid -replace '^win-', ''
     $sources = if ($root) { Get-ChildItem (Join-Path $root $arch) -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^Microsoft\.VC\d+\.(CRT|OpenMP)$' } } else { @() }
-    foreach ($source in $sources) { Copy-Item (Join-Path $source.FullName '*.dll') $folder -Force }
 
-    # Every runtime DLL the Whisper libraries import must now be next to the exe.
-    $needed = Get-ChildItem (Join-Path $folder 'runtimes') -Recurse -Filter '*.dll' | ForEach-Object {
-        [regex]::Matches([Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($_.FullName)), '(?i)\b(vcruntime\d+(_\d)?|msvcp\d+|vcomp\d+)\.dll') | ForEach-Object { $_.Value.ToLowerInvariant() }
-    } | Sort-Object -Unique
-    $missing = @($needed | Where-Object { -not (Test-Path (Join-Path $folder $_)) })
+    # Whisper.net loads its DLLs with "DLL's own folder, then System32" search, which skips the exe folder,
+    # so the runtime must sit next to the DLLs that import it (runtimes\<rid>).
+    $imports = @(Get-ChildItem (Join-Path $folder 'runtimes') -Recurse -Filter '*.dll' | ForEach-Object {
+        $names = [regex]::Matches([Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($_.FullName)), '(?i)\b(vcruntime\d+(_\d)?|msvcp\d+|vcomp\d+)\.dll') | ForEach-Object { $_.Value.ToLowerInvariant() }
+        foreach ($name in $names) { [pscustomobject]@{ Dir = $_.DirectoryName; Name = $name } }
+    })
+    foreach ($dir in $imports.Dir | Sort-Object -Unique) {
+        foreach ($source in $sources) { Copy-Item (Join-Path $source.FullName '*.dll') $dir -Force }
+    }
+
+    $needed = $imports.Name | Sort-Object -Unique
+    $missing = @($imports | Where-Object { -not (Test-Path (Join-Path $_.Dir $_.Name)) } | ForEach-Object { $_.Name } | Sort-Object -Unique)
     if ($missing.Count -eq 0) {
         Write-Host "    bundled Visual C++ runtime: $($needed -join ', ')" -ForegroundColor DarkGray
         return
