@@ -153,7 +153,14 @@ if ($running) {
 }
 
 Write-Step "Installing to $InstallDir"
-if (Test-Path $InstallDir) { Remove-Item $InstallDir -Recurse -Force }
+# The stopped process can hold its native DLLs for a moment; retry instead of failing half-way.
+for ($attempt = 1; (Test-Path $InstallDir); $attempt++) {
+    try { Remove-Item $InstallDir -Recurse -Force -ErrorAction Stop }
+    catch {
+        if ($attempt -ge 10) { throw }
+        Start-Sleep -Milliseconds 500
+    }
+}
 New-Item -ItemType Directory -Force $InstallDir | Out-Null
 Copy-Item (Join-Path $staging '*') $InstallDir -Recurse -Force
 Remove-Item $staging -Recurse -Force
