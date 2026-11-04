@@ -7,31 +7,70 @@ using VoiceAssistant.Core;
 
 namespace VoiceAssistant.App.UI;
 
-/// <summary>Click-through status pill that never takes keyboard focus from the app being dictated into.</summary>
+/// <summary>
+/// Status pill that never takes keyboard focus from the app being dictated into. Minimized, it hides while idle
+/// and reappears for the wake word, dictation, commands, and messages.
+/// </summary>
 public partial class OverlayWindow : Window
 {
     private readonly DispatcherTimer _fade = new() { Interval = TimeSpan.FromSeconds(6) };
+    private readonly bool _commandModeIsIdle;
+    private InteractionMode _mode = InteractionMode.Paused;
+    private string? _activity;
+    private bool _minimized;
 
-    public OverlayWindow()
+    /// <param name="commandModeIsIdle">True when there is no wake word, so "listening for a command" is the resting state.</param>
+    public OverlayWindow(bool commandModeIsIdle = false)
     {
         InitializeComponent();
+        _commandModeIsIdle = commandModeIsIdle;
         _fade.Tick += (_, _) =>
         {
             _fade.Stop();
             MessageText.Visibility = Visibility.Collapsed;
             HeardText.Visibility = Visibility.Collapsed;
+            UpdateVisibility();
         };
         SourceInitialized += (_, _) =>
         {
             var hwnd = new WindowInteropHelper(this).Handle;
             var style = Win32.GetWindowLongPtr(hwnd, Win32.GWL_EXSTYLE);
-            Win32.SetWindowLongPtr(hwnd, Win32.GWL_EXSTYLE, style | Win32.WS_EX_NOACTIVATE | Win32.WS_EX_TOOLWINDOW | Win32.WS_EX_TRANSPARENT);
+            Win32.SetWindowLongPtr(hwnd, Win32.GWL_EXSTYLE, style | Win32.WS_EX_NOACTIVATE | Win32.WS_EX_TOOLWINDOW);
         };
         SizeChanged += (_, _) => Reposition();
+        MinimizeButton.Click += (_, _) =>
+        {
+            Minimized = true;
+            if (IsVisible)
+            {
+                Hide();
+            }
+        };
+    }
+
+    /// <summary>Raised when <see cref="Minimized"/> changes (from the pill's button or the tray menu).</summary>
+    public event Action<bool>? MinimizedChanged;
+
+    public bool Minimized
+    {
+        get => _minimized;
+        set
+        {
+            if (_minimized == value)
+            {
+                return;
+            }
+
+            _minimized = value;
+            UpdateVisibility();
+            MinimizedChanged?.Invoke(value);
+        }
     }
 
     public void ShowMode(InteractionMode mode, string? activity = null)
     {
+        _mode = mode;
+        _activity = activity;
         (ModeText.Text, Dot.Fill) = mode switch
         {
             InteractionMode.Dictation => ("Typing — say “stop typing” when done", Brush("#EA4335")),
@@ -43,13 +82,16 @@ public partial class OverlayWindow : Window
         if (activity is not null)
         {
             ModeText.Text = activity;
-            Dot.Fill = activity.StartsWith("Dictating", StringComparison.Ordinal) ? Brush("#EA4335") : Brush("#FBBC04");
+            Dot.Fill = IsDictating(activity) ? Brush("#EA4335") : Brush("#FBBC04");
         }
+
+        UpdateVisibility();
     }
 
     public void ShowStatus(StatusUpdate update)
     {
-        ShowMode(update.Mode);
+        // A recording stays on screen until it ends, even if a status (e.g. the wake window expiring) arrives.
+        ShowMode(update.Mode, IsDictating(_activity) ? _activity : null);
         MessageText.Text = update.Message;
         MessageText.Foreground = update.Kind switch
         {
@@ -63,6 +105,7 @@ public partial class OverlayWindow : Window
         HeardText.Visibility = string.IsNullOrEmpty(update.Heard) ? Visibility.Collapsed : Visibility.Visible;
         _fade.Stop();
         _fade.Start();
+        UpdateVisibility();
     }
 
     /// <summary>Shows the live transcript while dictation records; null hides it. Long text keeps its latest words.</summary>
@@ -73,6 +116,7 @@ public partial class OverlayWindow : Window
         {
             LiveText.Text = string.Empty;
             LiveText.Visibility = Visibility.Collapsed;
+            UpdateVisibility();
             return;
         }
 
@@ -87,6 +131,29 @@ public partial class OverlayWindow : Window
         LiveText.Visibility = Visibility.Visible;
         MessageText.Visibility = Visibility.Collapsed;
         HeardText.Visibility = Visibility.Collapsed;
+        UpdateVisibility();
+    }
+
+    /// <summary>Always shown unless minimized; minimized, shown only while there is activity or a message.</summary>
+    private void UpdateVisibility()
+    {
+        var busy = _mode == InteractionMode.Dictation
+            || (_mode == InteractionMode.Command && !_commandModeIsIdle)
+            || _activity is not null
+            || LiveText.Visibility == Visibility.Visible
+            || MessageText.Visibility == Visibility.Visible
+            || HeardText.Visibility == Visibility.Visible;
+        if (!_minimized || busy)
+        {
+            if (!IsVisible)
+            {
+                Show();
+            }
+        }
+        else if (IsVisible)
+        {
+            Hide();
+        }
     }
 
     private void Reposition()
@@ -95,6 +162,8 @@ public partial class OverlayWindow : Window
         Left = area.Left + ((area.Width - ActualWidth) / 2);
         Top = area.Bottom - ActualHeight - 16;
     }
+
+    private static bool IsDictating(string? activity) => activity?.StartsWith("Dictating", StringComparison.Ordinal) == true;
 
     private static SolidColorBrush Brush(string hex) => new((Color)ColorConverter.ConvertFromString(hex));
 }

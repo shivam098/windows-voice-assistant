@@ -102,7 +102,7 @@ Speak naturally — polite padding is understood: *“Hey Jarvis, can you open N
 "Hey Jarvis, open GitHub Copilot and start typing"  →  "Fix the failing test"  →  "Send"
 ```
 
-**Status pill:** light blue = waiting for “Hey Jarvis”, blue = listening for a command, red = typing/dictating, grey = paused. `Ctrl+Alt+Space` or a left-click on the tray icon pauses/resumes listening; push-to-talk works even while paused.
+**Status pill:** light blue = waiting for “Hey Jarvis”, blue = listening for a command, red = typing/dictating, grey = paused. `Ctrl+Alt+Space` or a left-click on the tray icon pauses/resumes listening; push-to-talk works even while paused. Click **–** on the pill to hide it while idle: it then appears only for “Hey Jarvis”, `Ctrl+Win`, typing, and messages. Tray menu › **Always show status pill** brings it back.
 
 ## Safety and privacy
 

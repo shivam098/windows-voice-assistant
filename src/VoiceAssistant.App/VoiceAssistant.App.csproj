@@ -11,7 +11,7 @@
     <AssemblyName>VoiceAssistant</AssemblyName>
     <RootNamespace>VoiceAssistant.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>0.3.3</Version>
+    <Version>0.3.4</Version>
     <Product>Voice Assistant</Product>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <!-- DPI awareness is declared in app.manifest for the WPF overlay; WinForms is only used for the tray icon. -->

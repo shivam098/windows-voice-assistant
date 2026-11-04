@@ -16,7 +16,7 @@ Everything you need to install, use, share, and change the app. For the full com
    powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
    ```
    It installs the .NET 10 SDK into your user profile if missing, builds the app for your PC (x64 or ARM64), downloads and verifies the speech models (~265 MB), installs to `%LOCALAPPDATA%\Programs\VoiceAssistant`, adds a Start menu shortcut, and starts it.
-3. Look for the **purple microphone** in the system tray and the status pill at the bottom of the screen.
+3. Look for the **purple microphone** in the system tray and the status pill at the bottom of the screen. Click **–** on the pill to hide it until it's needed (it reappears for “Hey Jarvis”, `Ctrl` + `Win`, and messages); tray menu › **Always show status pill** brings it back.
 4. Optional: tray icon → **Start when I sign in** (or install with `-StartAtSignIn`).
 
 To update later: `git pull`, then run `install.ps1` again (it replaces the old version and keeps your settings, models, and learned phrases).

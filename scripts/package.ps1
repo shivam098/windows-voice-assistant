@@ -129,6 +129,7 @@ DICTATE ANYWHERE
   Hold Ctrl+Win, speak, release   -> words show live as you speak, then are typed where your cursor is
   Ctrl+Win+Space                  -> hands-free dictation (press again to finish)
   Esc cancels  ·  Alt+Shift+Z pastes the last dictation again
+Click - on the status pill to hide it until it's needed (tray menu > Always show status pill brings it back)
 
 VOICE COMMANDS (start with "Hey Jarvis")
   "Hey Jarvis, open Notepad"  ->  "Start typing"  ->  speak  ->  "Stop typing"
