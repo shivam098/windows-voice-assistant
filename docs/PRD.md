@@ -111,3 +111,17 @@ Here, the "composer" / "message box" means the prompt input field in GitHub Copi
 1. Inspect the running GitHub Copilot desktop app window and accessibility tree on this laptop.
 2. Scaffold the lightweight Windows prototype (.NET 8 WPF + NAudio + local Whisper/Sherpa-ONNX streaming ASR + UIA/SendInput engine).
 3. Test the live `"Open GitHub Copilot" -> "Start typing" -> dictate -> "Send"` loop.
+
+## 9. Phase 1.5 — Wispr-parity dictation and app actions (added 2026-11-04)
+
+User direction: dictation should match Wispr Flow's features; actions should work naturally across apps (“open Notepad” → “start typing” types in the document; “open Chrome” → “go to the search box” → dictate → search; “start/stop typing”), with a wake word (“Hey Jarvis”) and a recognisable logo.
+
+| Requirement | Status |
+|---|---|
+| Push-to-talk (hold Ctrl+Win), hands-free toggle (Ctrl+Win+Space), Esc cancel, paste last (Alt+Shift+Z) | Done |
+| Filler-word removal, spoken punctuation, inline “scratch that”, personal replacements, snippets | Done (rule-based) |
+| Reliable insertion in every app, clipboard kept private and restored | Done (paste) |
+| “Hey Jarvis” wake word with short command window | Done |
+| Notepad document / Copilot message box / browser search & address bar targeting; “search for …”; key and editing commands | Done |
+| App logo (exe, Start menu, tray, status pill) | Done |
+| AI rewrites, tones/styles, command-mode editing of selected text, multi-language | Future — needs an on-device language model |
