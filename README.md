@@ -48,12 +48,17 @@ Dictation is cleaned up automatically:
 
 ## 2. Voice control — “Hey Jarvis”
 
-The assistant waits for **“Hey Jarvis”**; other speech is ignored silently. After the wake word, commands work without it for 8 seconds (each command extends this).
+The assistant waits for **“Hey Jarvis”**. After the wake word, commands work without it for **30 seconds** (each command extends this). If you say a command without the wake word, the pill reminds you to say “Hey Jarvis” first; other speech is ignored silently. Short tones play when it wakes and when typing starts/stops.
+
+Speak naturally — polite padding is understood: *“Hey Jarvis, can you open Notepad?”*, *“Could you please open Chrome for me”*, *“I want to start typing”*, *“fire up Chrome”*. Misheard app names are tolerated (“notpad”, “crome”, “outlook” → “Outlook (new)”).
+
+**It learns from you:** if it doesn't understand something and you rephrase it within 30 seconds, it remembers the first phrase for next time (*“Got it — next time ‘get notepad going’ will do that too.”*). It only learns when both phrases share a meaningful word (like the app name), and prefers the apps you open most when a name is ambiguous. Learned phrases stay on this PC in `%APPDATA%\VoiceAssistant\learned.json`; tray → *Forget what I've learned* clears them.
 
 | Say | Does |
 |---|---|
-| “Hey Jarvis, open Notepad” / “…open Chrome” / “…open GitHub Copilot” | Opens or switches to the app (any Start menu app works) |
-| “Start typing” | Starts dictation in the app’s text area — Notepad’s document, Copilot’s message box, or whatever is focused |
+| “Open Notepad” / “Open Chrome” / “Open GitHub Copilot” | Opens the app. **Notepad opens a fresh window** (never types into your open document) |
+| “Switch to Notepad” / “Go back to Chrome” | Brings the existing window to the front |
+| “Start typing” | Starts dictation in the app’s text area — Notepad’s document, Copilot’s message box, a browser’s address/search bar (or the page text box you clicked) |
 | “Hey Jarvis, open Notepad and start typing” | Both at once |
 | “Go to the search box” | Browsers: the address/search bar. Other apps: the box labelled “search”. Then dictate your query |
 | “Go to the address bar” | Browsers |
@@ -101,7 +106,9 @@ The assistant waits for **“Hey Jarvis”**; other speech is ignored silently. 
 
 | Setting | Default | |
 |---|---|---|
-| `wakeWordEnabled` / `wakeWords` / `awakeSeconds` | `true` / “hey jarvis”… / `8` | Wake word behaviour |
+| `wakeWordEnabled` / `wakeWords` / `awakeSeconds` | `true` / “hey jarvis”… / `30` | Wake word behaviour |
+| `learnFromUsage` | `true` | Learn rephrasings and app usage (`learned.json`) |
+| `soundFeedback` | `true` | Tones on wake, typing start/stop, push-to-talk |
 | `pushToTalk` | `true` | `Ctrl+Win` dictation keys |
 | `pasteLastHotkey` | `Alt+Shift+Z` | |
 | `insertMethod` | `Paste` | `Type` sends keystrokes instead (some apps drop characters) |
@@ -112,7 +119,7 @@ The assistant waits for **“Hey Jarvis”**; other speech is ignored silently. 
 | `endSilenceMs` | `600` | Pause that ends a phrase |
 | `maxCommandUtteranceMs` | `6000` | Longer speech while waiting for a command is skipped |
 | `hotkey` | `Ctrl+Alt+Space` | Pause/resume listening |
-| `apps` | Copilot, Notepad, Chrome, Edge, Firefox | Per-app launch, `submitKeys`, `newLineKeys`, `textArea` (`Bottom`/`Largest`), `textAreaName`, `searchKeys` |
+| `apps` | Copilot, Notepad, Chrome, Edge, Firefox | Per-app launch, `submitKeys`, `newLineKeys`, `textArea` (`Bottom`/`Largest`), `textAreaName`, `searchKeys`, `newWindowKeys`, `newDocumentKeys` |
 
 ## How it works
 

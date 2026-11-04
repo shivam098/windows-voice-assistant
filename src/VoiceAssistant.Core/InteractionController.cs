@@ -22,8 +22,11 @@ public sealed record ControllerOptions
     /// <summary>When true, listening starts in <see cref="InteractionMode.Standby"/> and commands need the wake word.</summary>
     public bool WakeWordEnabled { get; init; } = true;
 
-    /// <summary>How long commands work without repeating the wake word.</summary>
-    public TimeSpan AwakeTimeout { get; init; } = TimeSpan.FromSeconds(8);
+    /// <summary>How long commands work without repeating the wake word (refreshed by each command).</summary>
+    public TimeSpan AwakeTimeout { get; init; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>A rephrasing within this time after an unrecognised phrase is learned as its meaning.</summary>
+    public TimeSpan LearnWindow { get; init; } = TimeSpan.FromSeconds(30);
 
     public string WakeWordLabel { get; init; } = "Hey Jarvis";
 
@@ -40,6 +43,7 @@ public sealed class InteractionController
     private readonly CommandParser _parser;
     private readonly DictationFormatter _formatter;
     private readonly ControllerOptions _options;
+    private readonly PhraseMemory? _memory;
     private readonly Stack<int> _segments = new();
     private WindowRef? _target;
     private AppEntry? _targetProfile;
@@ -48,20 +52,28 @@ public sealed class InteractionController
     private bool _endsSentence = true;
     private bool _searchField;
     private DateTime _awakeSince;
+    private (string Phrase, DateTime At)? _unrecognized;
 
-    public InteractionController(IDesktop desktop, AppCatalog apps, CommandParser parser, ControllerOptions? options = null, DictationFormatter? formatter = null)
+    public InteractionController(IDesktop desktop, AppCatalog apps, CommandParser parser, ControllerOptions? options = null, DictationFormatter? formatter = null, PhraseMemory? memory = null)
     {
         _desktop = desktop;
         _apps = apps;
         _parser = parser;
         _options = options ?? new ControllerOptions();
         _formatter = formatter ?? new DictationFormatter();
+        _memory = memory;
     }
 
     public event Action<StatusUpdate>? Status;
 
     /// <summary>Raised when a voice command asks to stop listening; the host must turn the microphone off.</summary>
     public event Action? PauseRequested;
+
+    /// <summary>Raised after something was learned (rephrasing or app use); the host persists the memory.</summary>
+    public event Action? MemoryChanged;
+
+    /// <summary>Content-free diagnostics (command kinds and outcomes, never transcripts) for the log.</summary>
+    public event Action<string>? Trace;
 
     public InteractionMode Mode { get; private set; } = InteractionMode.Paused;
 
@@ -132,11 +144,19 @@ public sealed class InteractionController
         var parsed = _parser.Parse(transcript, Mode);
         if (parsed.IsEmpty)
         {
+            if (Mode == InteractionMode.Standby && _parser.Parse(transcript, InteractionMode.Command).Commands.Count > 0)
+            {
+                // A real command without the wake word: say why nothing happened instead of staying silent.
+                Trace?.Invoke("standby: command without wake word");
+                Report(StatusKind.Info, $"Say “{_options.WakeWordLabel}” first, then the command.", heard);
+            }
+
             return;
         }
 
         if ((parsed.Commands.Count > 0 || parsed.IsWakeOnly) && confidence < _options.MinCommandConfidence)
         {
+            Trace?.Invoke("low confidence command ignored");
             Report(StatusKind.Warning, "Not sure I heard that right — ignored.", heard);
             return;
         }
@@ -146,6 +166,7 @@ public sealed class InteractionController
             if (Mode != InteractionMode.Dictation)
             {
                 Awake();
+                Trace?.Invoke("wake");
                 Report(StatusKind.Info, "Yes? Say a command.", heard);
             }
 
@@ -159,7 +180,9 @@ public sealed class InteractionController
                 Awake();
             }
 
-            Report(StatusKind.Warning, "Not a command I know.", heard);
+            _unrecognized = (parsed.Unrecognized, _options.Clock());
+            Trace?.Invoke("unrecognized command");
+            Report(StatusKind.Warning, "Not a command I know. Say it another way and I'll remember.", heard);
             return;
         }
 
@@ -174,18 +197,46 @@ public sealed class InteractionController
             Awake();
         }
 
+        var allSucceeded = true;
         foreach (var command in parsed.Commands)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!await ExecuteAsync(command, heard, cancellationToken).ConfigureAwait(false))
+            var ok = await ExecuteAsync(command, heard, cancellationToken).ConfigureAwait(false);
+            Trace?.Invoke($"command {command.Kind} {(ok ? "ok" : "failed")}{(parsed.FromLearnedPhrase ? " (learned phrase)" : string.Empty)}");
+            if (!ok)
             {
+                allSucceeded = false;
                 break;
             }
         }
 
+        LearnRephrasing(parsed, allSucceeded, heard);
+
         if (Mode == InteractionMode.Command)
         {
             _awakeSince = _options.Clock();
+        }
+    }
+
+    /// <summary>
+    /// If the user just said something unrecognised and now rephrased it as a working command, remember
+    /// the first phrase as meaning the second (PhraseMemory only accepts pairs sharing a meaningful word).
+    /// </summary>
+    private void LearnRephrasing(ParsedUtterance parsed, bool succeeded, string heard)
+    {
+        var pending = _unrecognized;
+        _unrecognized = null;
+        if (_memory is null || !succeeded || parsed.CommandText is null || pending is null ||
+            _options.Clock() - pending.Value.At > _options.LearnWindow)
+        {
+            return;
+        }
+
+        if (_memory.Learn(pending.Value.Phrase, parsed.CommandText))
+        {
+            Trace?.Invoke("learned a rephrasing");
+            MemoryChanged?.Invoke();
+            Report(StatusKind.Info, $"Got it — next time “{pending.Value.Phrase}” will do that too.", heard);
         }
     }
 
@@ -222,7 +273,10 @@ public sealed class InteractionController
         switch (command.Kind)
         {
             case CommandKind.OpenApp:
-                return await OpenAsync(command.Argument ?? string.Empty, heard, ct).ConfigureAwait(false);
+                return await OpenAsync(command.Argument ?? string.Empty, newWindow: true, heard, ct).ConfigureAwait(false);
+
+            case CommandKind.SwitchToApp:
+                return await OpenAsync(command.Argument ?? string.Empty, newWindow: false, heard, ct).ConfigureAwait(false);
 
             case CommandKind.StartTyping:
                 return await StartTypingAsync(heard, ct).ConfigureAwait(false);
@@ -325,13 +379,19 @@ public sealed class InteractionController
 
     private string NewLineKeys => _targetProfile?.NewLineKeys ?? "Shift+Enter";
 
-    private async Task<bool> OpenAsync(string spokenName, string heard, CancellationToken ct)
+    private async Task<bool> OpenAsync(string spokenName, bool newWindow, string heard, CancellationToken ct)
     {
         switch (_apps.Resolve(spokenName))
         {
             case AppResolution.Found found:
                 Report(StatusKind.Info, $"Opening {found.App.Name}…", heard);
-                var result = await _desktop.OpenOrActivateAsync(found.App, ct).ConfigureAwait(false);
+                var result = await _desktop.OpenOrActivateAsync(found.App, newWindow, ct).ConfigureAwait(false);
+                if (result.Success)
+                {
+                    _memory?.RecordAppUse(found.App.Name);
+                    MemoryChanged?.Invoke();
+                }
+
                 if (result.Success && result.Window is null)
                 {
                     // Launched, but we can't tell which window is the app, so don't chain "start typing" into a guess.
@@ -367,6 +427,12 @@ public sealed class InteractionController
         {
             Report(StatusKind.Warning, prepared.Message, heard);
             return false;
+        }
+
+        if (profile?.SearchKeys is not null && profile.TextArea is null && prepared.FocusIsEditable == false)
+        {
+            // Browsers: if the cursor isn't in a text box on the page, "start typing" means the address/search bar.
+            return await FocusSearchAsync(heard, addressBar: false, ct).ConfigureAwait(false);
         }
 
         BindTarget(window, profile, prepared.HasTrailingText == true, searchField: false);

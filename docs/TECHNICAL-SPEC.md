@@ -19,6 +19,18 @@ v0.2 adds Wispr-style dictation, the “Hey Jarvis” wake word, app actions, an
 | App actions | Per-app `textArea` (`Bottom`/`Largest`) + `textAreaName`; browser `searchKeys` (`Ctrl+L`); UIA “search” box lookup elsewhere; “search for …”; key presses and editing shortcuts |
 | Not implemented | AI rewrites/tones/command mode (needs a language model), multi-language, “new chat” |
 
+v0.3 (user feedback: strict keywords, 8 s window too short, “open Notepad” reused the open document):
+
+| Area | v0.3 implementation |
+|---|---|
+| Natural phrasing | Polite padding stripped (“can you please … for me”); more verbs (open up/fire up/run/start/launch; switch to/go to/show me); phrase variants for typing, search box, shortcuts. Unprefixed dictation stays strict |
+| App names | Exact → relaxed (vendor prefix, parenthetical) → prefix → Levenshtein ≤1–2; ties go to the most-used app |
+| Learning | `PhraseMemory`: unrecognised phrase + successful rephrasing within 30 s → synonym, only if they share a distinctive word; app usage counts; persisted to `learned.json` |
+| Open vs switch | “Open” uses `newWindowKeys` (Notepad Ctrl+Shift+N) when running and `newDocumentKeys` (Ctrl+N) after launch; “switch to” reuses the existing window |
+| Wake window | 30 s; commands without the wake word show a hint |
+| Browser typing | “Start typing” focuses the address/search bar unless a page text box has focus |
+| Feedback | Tones for wake / typing start / stop; command outcomes logged without content |
+
 ## Implementation status (v0.1.0, Phase 1 MVP)
 
 What shipped differs from the v0.2 draft below in these places; the draft is kept for the roadmap.

@@ -15,7 +15,11 @@ public enum InteractionMode
 
 public enum CommandKind
 {
+    /// <summary>Open the app; for apps with a new-window shortcut (Notepad), opens a fresh window.</summary>
     OpenApp,
+
+    /// <summary>Bring an existing window of the app to the front (launch it if it isn't running).</summary>
+    SwitchToApp,
     StartTyping,
     Send,
     ScratchThat,
@@ -46,8 +50,14 @@ public sealed record ParsedUtterance
 
     public string? DictationText { get; init; }
 
-    /// <summary>Normalized text that looked like a command attempt but matched nothing.</summary>
+    /// <summary>Simplified text that looked like a command attempt but matched nothing.</summary>
     public string? Unrecognized { get; init; }
+
+    /// <summary>The simplified phrase that matched (used to learn rephrasings).</summary>
+    public string? CommandText { get; init; }
+
+    /// <summary>The command came from a phrase the user taught earlier.</summary>
+    public bool FromLearnedPhrase { get; init; }
 
     /// <summary>The utterance started with the wake word.</summary>
     public bool WokeUp { get; init; }
@@ -62,26 +72,55 @@ public sealed class CommandParser
     public static readonly IReadOnlyList<string> DefaultWakeWords =
         ["hey jarvis", "hi jarvis", "hello jarvis", "ok jarvis", "okay jarvis", "a jarvis", "hey jervis", "hey javis", "jarvis"];
 
-    private static readonly HashSet<string> SendPhrases = ["send", "send it", "submit", "send message", "send the message", "search", "search it"];
-    private static readonly HashSet<string> StartTypingPhrases = ["start typing", "start dictation", "resume typing", "begin typing", "type", "start writing"];
-    private static readonly HashSet<string> PausePhrases = ["pause listening", "stop listening", "go to sleep", "pause"];
-    private static readonly HashSet<string> StopTypingPhrases = ["stop typing", "stop dictation", "command mode", "stop writing"];
-    private static readonly HashSet<string> ScratchPhrases = ["scratch that", "undo that", "delete that"];
-    private static readonly HashSet<string> ClearPhrases = ["clear box", "clear the box", "clear text", "clear all", "clear message", "clear the message"];
-    private static readonly HashSet<string> NewLinePhrases = ["new line", "next line"];
-    private static readonly HashSet<string> NewParagraphPhrases = ["new paragraph"];
-    private static readonly string[] OpenVerbs = ["open", "launch", "switch to", "bring up"];
-    private static readonly string[] ChainedStartTyping = [" and start typing", " and start dictation", " and type"];
-
-    private static readonly HashSet<string> SearchBoxPhrases =
+    // Conversational padding around a command: "can you please open notepad for me" → "open notepad".
+    private static readonly string[] PolitePrefixes =
     [
-        "go to the search box", "go to search box", "go to the search bar", "go to search bar", "go to search",
-        "search box", "search bar", "focus search", "focus the search box", "click the search box", "click search",
-        "click on the search box", "go to the search field", "type in the search box",
+        "can you please", "could you please", "would you please", "will you please", "can you", "could you", "would you",
+        "will you", "would you mind", "please", "kindly", "i want you to", "i want to", "i would like to", "id like to",
+        "i need you to", "i need to", "i wanna", "lets", "let us", "go ahead and", "now", "just", "okay", "ok", "so", "and",
+        "then", "hey", "um", "uh", "alright", "all right",
     ];
 
-    private static readonly HashSet<string> AddressBarPhrases =
-        ["go to the address bar", "go to address bar", "address bar", "focus the address bar", "click the address bar", "go to the url bar", "url bar"];
+    private static readonly string[] PoliteSuffixes =
+        ["please", "for me", "right now", "now", "thanks", "thank you", "if you can", "again", "quickly"];
+
+    // While dictating without the wake word, only these exact phrases are commands: everything else is the
+    // user's text. Keep this list short and unusual — "Post it." or "That's all." must be typed, not executed.
+    private static readonly HashSet<string> StrictSend = ["send", "send it", "submit", "send message", "send the message", "search", "search it"];
+    private static readonly HashSet<string> StrictScratch = ["scratch that", "undo that", "delete that"];
+    private static readonly HashSet<string> StrictClear = ["clear box", "clear the box", "clear text", "clear all", "clear message", "clear the message"];
+    private static readonly HashSet<string> StrictNewLine = ["new line", "next line"];
+    private static readonly HashSet<string> StrictNewParagraph = ["new paragraph"];
+    private static readonly HashSet<string> StrictStopTyping = ["stop typing", "stop dictation", "command mode", "stop writing"];
+    private static readonly HashSet<string> StrictPause = ["pause listening", "stop listening", "go to sleep", "pause"];
+
+    // Broader phrasings, accepted only when waiting for a command or after the wake word.
+    private static readonly HashSet<string> SendPhrases = [.. StrictSend, "send that", "submit it", "post it"];
+
+    private static readonly HashSet<string> StartTypingPhrases =
+    [
+        "start typing", "start dictation", "resume typing", "begin typing", "type", "start writing", "start dictating",
+        "let me type", "type here", "type in it", "type something", "start typing here", "take dictation", "dictate",
+        "begin dictation", "write", "start typing in it", "i want to type", "lets type", "continue typing",
+    ];
+
+    private static readonly HashSet<string> PausePhrases = [.. StrictPause, "be quiet"];
+    private static readonly HashSet<string> StopTypingPhrases = [.. StrictStopTyping, "stop dictating", "done typing", "im done", "that is all", "thats all", "end dictation"];
+    private static readonly HashSet<string> ScratchPhrases = [.. StrictScratch, "remove that", "erase that"];
+    private static readonly HashSet<string> ClearPhrases = [.. StrictClear, "clear everything", "delete everything"];
+    private static readonly HashSet<string> NewLinePhrases = [.. StrictNewLine, "line break"];
+    private static readonly HashSet<string> NewParagraphPhrases = [.. StrictNewParagraph, "next paragraph"];
+
+    private static readonly string[] OpenVerbs = ["open up", "open", "launch", "start", "run", "fire up", "pull up", "load", "get me", "give me"];
+    private static readonly string[] SwitchVerbs = ["switch to", "switch over to", "go to", "go back to", "bring up", "show me", "show", "focus", "jump to", "take me to"];
+    private static readonly string[] ChainedStartTyping =
+        [" and start typing", " and start dictation", " and type", " and let me type", " and start writing", " to type", " so i can type"];
+
+    private static readonly string[] AppNameNoise = ["app", "application", "window", "program", "browser"];
+
+    private static readonly string[] SearchTargets = ["search box", "search bar", "search field", "search"];
+    private static readonly string[] AddressTargets = ["address bar", "url bar", "address box", "location bar"];
+    private static readonly string[] FocusVerbs = ["go to", "click", "click on", "focus", "focus on", "select", "move to", "put the cursor in", "type in", "jump to", "open"];
 
     private static readonly Dictionary<string, string> PressableKeys = new(StringComparer.Ordinal)
     {
@@ -96,21 +135,26 @@ public sealed class CommandParser
     private static readonly Dictionary<string, string> Shortcuts = new(StringComparer.Ordinal)
     {
         ["select all"] = "Ctrl+A", ["copy"] = "Ctrl+C", ["copy that"] = "Ctrl+C", ["paste"] = "Ctrl+V", ["paste that"] = "Ctrl+V",
-        ["cut"] = "Ctrl+X", ["cut that"] = "Ctrl+X", ["undo"] = "Ctrl+Z", ["redo"] = "Ctrl+Y", ["save"] = "Ctrl+S", ["save file"] = "Ctrl+S",
-        ["new tab"] = "Ctrl+T", ["open a new tab"] = "Ctrl+T", ["open new tab"] = "Ctrl+T", ["close tab"] = "Ctrl+W", ["close the tab"] = "Ctrl+W",
+        ["paste it"] = "Ctrl+V", ["cut"] = "Ctrl+X", ["cut that"] = "Ctrl+X", ["undo"] = "Ctrl+Z", ["redo"] = "Ctrl+Y",
+        ["save"] = "Ctrl+S", ["save file"] = "Ctrl+S", ["save it"] = "Ctrl+S", ["save this"] = "Ctrl+S", ["save the file"] = "Ctrl+S",
+        ["new tab"] = "Ctrl+T", ["open a new tab"] = "Ctrl+T", ["open new tab"] = "Ctrl+T", ["open a tab"] = "Ctrl+T",
+        ["close tab"] = "Ctrl+W", ["close the tab"] = "Ctrl+W", ["close this tab"] = "Ctrl+W",
         ["next tab"] = "Ctrl+Tab", ["previous tab"] = "Ctrl+Shift+Tab", ["go back"] = "Alt+Left", ["go forward"] = "Alt+Right",
-        ["refresh"] = "F5", ["reload"] = "F5", ["reload page"] = "F5", ["refresh page"] = "F5",
-        ["scroll down"] = "PageDown", ["scroll up"] = "PageUp",
+        ["back"] = "Alt+Left", ["forward"] = "Alt+Right",
+        ["refresh"] = "F5", ["reload"] = "F5", ["reload page"] = "F5", ["refresh page"] = "F5", ["refresh the page"] = "F5", ["reload the page"] = "F5",
+        ["scroll down"] = "PageDown", ["scroll up"] = "PageUp", ["page down"] = "PageDown", ["page up"] = "PageUp",
     };
 
     private readonly string _prefix;
     private readonly bool _requirePrefixWhileTyping;
     private readonly IReadOnlyList<string> _wakeWords;
+    private readonly PhraseMemory? _memory;
 
-    public CommandParser(string commandPrefix = "computer", bool requirePrefixWhileTyping = false, IEnumerable<string>? wakeWords = null)
+    public CommandParser(string commandPrefix = "computer", bool requirePrefixWhileTyping = false, IEnumerable<string>? wakeWords = null, PhraseMemory? memory = null)
     {
         _prefix = TranscriptText.Normalize(commandPrefix);
         _requirePrefixWhileTyping = requirePrefixWhileTyping;
+        _memory = memory;
         _wakeWords = (wakeWords ?? DefaultWakeWords)
             .Select(TranscriptText.Normalize)
             .Where(w => w.Length > 0)
@@ -120,8 +164,41 @@ public sealed class CommandParser
     }
 
     /// <summary>
-    /// Parses one complete, pause-delimited utterance. Commands must match the whole utterance,
-    /// so "please send me the logs" is dictation while a standalone "Send." is a command.
+    /// Removes conversational padding (“can you please …”, “… for me”). Exposed for learning rephrasings.
+    /// </summary>
+    public static string Simplify(string normalized)
+    {
+        var text = normalized;
+        bool changed;
+        do
+        {
+            changed = false;
+            foreach (var prefix in PolitePrefixes)
+            {
+                if (text.StartsWith(prefix + " ", StringComparison.Ordinal))
+                {
+                    text = text[(prefix.Length + 1)..].TrimStart();
+                    changed = true;
+                }
+            }
+
+            foreach (var suffix in PoliteSuffixes)
+            {
+                if (text.EndsWith(" " + suffix, StringComparison.Ordinal))
+                {
+                    text = text[..^(suffix.Length + 1)].TrimEnd();
+                    changed = true;
+                }
+            }
+        }
+        while (changed && text.Length > 0);
+
+        return text;
+    }
+
+    /// <summary>
+    /// Parses one complete, pause-delimited utterance. Commands must match the whole utterance (after
+    /// polite padding is removed), so "please send me the logs" is dictation while "Send." is a command.
     /// </summary>
     public ParsedUtterance Parse(string? transcript, InteractionMode mode)
     {
@@ -141,6 +218,7 @@ public sealed class CommandParser
                 return ParsedUtterance.Empty;
 
             case InteractionMode.Dictation:
+            {
                 if (normalized.Length == 0)
                 {
                     return new ParsedUtterance { WokeUp = woke };
@@ -151,26 +229,49 @@ public sealed class CommandParser
                     return new ParsedUtterance { DictationText = cleaned };
                 }
 
-                var command = MatchDictationCommand(normalized);
+                // Unprefixed speech while typing stays strict: "please send it to Sam" is text, not a command.
+                var text = prefixed ? Simplify(normalized) : normalized;
+                var command = MatchDictationCommand(text, lenient: prefixed);
+                var learned = false;
+                if (command is null && prefixed && _memory?.TryGet(text, out var taught) == true)
+                {
+                    command = MatchDictationCommand(taught, lenient: true);
+                    learned = command is not null;
+                    text = learned ? taught : text;
+                }
+
                 if (command is not null)
                 {
-                    return new ParsedUtterance { Commands = [command], WokeUp = woke };
+                    return new ParsedUtterance { Commands = [command], WokeUp = woke, CommandText = text, FromLearnedPhrase = learned };
                 }
 
                 return prefixed
-                    ? new ParsedUtterance { Unrecognized = normalized, WokeUp = woke }
+                    ? new ParsedUtterance { Unrecognized = text, WokeUp = woke }
                     : new ParsedUtterance { DictationText = cleaned };
+            }
 
             default:
-                if (normalized.Length == 0)
+            {
+                var text = Simplify(normalized);
+                if (text.Length == 0)
                 {
                     return new ParsedUtterance { WokeUp = woke };
                 }
 
-                var commands = MatchCommandMode(normalized);
+                var commands = MatchCommandMode(text);
+                var learned = false;
+                if (commands is null && _memory?.TryGet(text, out var taught) == true)
+                {
+                    commands = MatchCommandMode(taught);
+                    learned = commands is not null;
+                    // Learn rephrasings against the real command, not another learned phrase.
+                    text = learned ? taught : text;
+                }
+
                 return commands is null
-                    ? new ParsedUtterance { Unrecognized = normalized, WokeUp = woke }
-                    : new ParsedUtterance { Commands = commands, WokeUp = woke };
+                    ? new ParsedUtterance { Unrecognized = text, WokeUp = woke }
+                    : new ParsedUtterance { Commands = commands, WokeUp = woke, CommandText = text, FromLearnedPhrase = learned };
+            }
         }
     }
 
@@ -213,15 +314,15 @@ public sealed class CommandParser
         return false;
     }
 
-    private static VoiceCommand? MatchDictationCommand(string n)
+    private static VoiceCommand? MatchDictationCommand(string n, bool lenient)
     {
-        if (SendPhrases.Contains(n)) return new VoiceCommand(CommandKind.Send);
-        if (ScratchPhrases.Contains(n)) return new VoiceCommand(CommandKind.ScratchThat);
-        if (ClearPhrases.Contains(n)) return new VoiceCommand(CommandKind.ClearBox);
-        if (NewLinePhrases.Contains(n)) return new VoiceCommand(CommandKind.NewLine);
-        if (NewParagraphPhrases.Contains(n)) return new VoiceCommand(CommandKind.NewParagraph);
-        if (StopTypingPhrases.Contains(n)) return new VoiceCommand(CommandKind.StopTyping);
-        if (PausePhrases.Contains(n)) return new VoiceCommand(CommandKind.PauseListening);
+        if ((lenient ? SendPhrases : StrictSend).Contains(n)) return new VoiceCommand(CommandKind.Send);
+        if ((lenient ? ScratchPhrases : StrictScratch).Contains(n)) return new VoiceCommand(CommandKind.ScratchThat);
+        if ((lenient ? ClearPhrases : StrictClear).Contains(n)) return new VoiceCommand(CommandKind.ClearBox);
+        if ((lenient ? NewLinePhrases : StrictNewLine).Contains(n)) return new VoiceCommand(CommandKind.NewLine);
+        if ((lenient ? NewParagraphPhrases : StrictNewParagraph).Contains(n)) return new VoiceCommand(CommandKind.NewParagraph);
+        if ((lenient ? StopTypingPhrases : StrictStopTyping).Contains(n)) return new VoiceCommand(CommandKind.StopTyping);
+        if ((lenient ? PausePhrases : StrictPause).Contains(n)) return new VoiceCommand(CommandKind.PauseListening);
         return MatchPress(n);
     }
 
@@ -231,20 +332,34 @@ public sealed class CommandParser
         if (SendPhrases.Contains(n)) return [new VoiceCommand(CommandKind.Send)];
         if (PausePhrases.Contains(n)) return [new VoiceCommand(CommandKind.PauseListening)];
         if (StopTypingPhrases.Contains(n)) return [new VoiceCommand(CommandKind.StopTyping)];
-        if (SearchBoxPhrases.Contains(n)) return [new VoiceCommand(CommandKind.FocusSearch)];
-        if (AddressBarPhrases.Contains(n)) return [new VoiceCommand(CommandKind.FocusAddressBar)];
+        if (MatchFocusTarget(n, AddressTargets)) return [new VoiceCommand(CommandKind.FocusAddressBar)];
+        if (MatchFocusTarget(n, SearchTargets)) return [new VoiceCommand(CommandKind.FocusSearch)];
         if (Shortcuts.TryGetValue(n, out var shortcut)) return [new VoiceCommand(CommandKind.PressKeys, shortcut)];
         if (MatchPress(n) is { } press) return [press];
 
-        foreach (var prefix in new[] { "search for ", "search the web for ", "google ", "look up " })
+        foreach (var prefix in new[] { "search for ", "search the web for ", "search google for ", "google ", "look up ", "search " })
         {
             if (n.StartsWith(prefix, StringComparison.Ordinal) && n.Length > prefix.Length)
             {
-                return [new VoiceCommand(CommandKind.SearchFor, n[prefix.Length..].Trim())];
+                var query = n[prefix.Length..].Trim();
+                foreach (var tail in new[] { " on google", " on the web", " online" })
+                {
+                    if (query.EndsWith(tail, StringComparison.Ordinal))
+                    {
+                        query = query[..^tail.Length];
+                    }
+                }
+
+                return [new VoiceCommand(CommandKind.SearchFor, query)];
             }
         }
 
-        foreach (var verb in OpenVerbs)
+        return MatchApp(n, OpenVerbs, CommandKind.OpenApp) ?? MatchApp(n, SwitchVerbs, CommandKind.SwitchToApp);
+    }
+
+    private static IReadOnlyList<VoiceCommand>? MatchApp(string n, string[] verbs, CommandKind kind)
+    {
+        foreach (var verb in verbs)
         {
             if (!n.StartsWith(verb + " ", StringComparison.Ordinal))
             {
@@ -263,27 +378,71 @@ public sealed class CommandParser
                 }
             }
 
-            if (app.StartsWith("the ", StringComparison.Ordinal))
-            {
-                app = app[4..];
-            }
-
+            app = CleanAppName(app);
             if (app.Length == 0)
             {
                 return null;
             }
 
             return startTyping
-                ? [new VoiceCommand(CommandKind.OpenApp, app), new VoiceCommand(CommandKind.StartTyping)]
-                : [new VoiceCommand(CommandKind.OpenApp, app)];
+                ? [new VoiceCommand(kind, app), new VoiceCommand(CommandKind.StartTyping)]
+                : [new VoiceCommand(kind, app)];
         }
 
         return null;
     }
 
+    /// <summary>"up a new notepad window" → "notepad".</summary>
+    private static string CleanAppName(string app)
+    {
+        foreach (var article in new[] { "up ", "the ", "my ", "a ", "an ", "new ", "a new ", "another " })
+        {
+            if (app.StartsWith(article, StringComparison.Ordinal))
+            {
+                app = app[article.Length..];
+            }
+        }
+
+        foreach (var noise in AppNameNoise)
+        {
+            if (app.EndsWith(" " + noise, StringComparison.Ordinal) && app.Length > noise.Length + 1)
+            {
+                app = app[..^(noise.Length + 1)];
+            }
+        }
+
+        return Simplify(app.Trim());
+    }
+
+    /// <summary>"go to the search box", "click on the search bar", "search box", "focus search" …</summary>
+    private static bool MatchFocusTarget(string n, string[] targets)
+    {
+        foreach (var target in targets)
+        {
+            foreach (var article in new[] { string.Empty, "the " })
+            {
+                var phrase = article + target;
+                if (n == phrase && target.Contains(' '))
+                {
+                    return true;
+                }
+
+                foreach (var verb in FocusVerbs)
+                {
+                    if (n == $"{verb} {phrase}")
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
     private static VoiceCommand? MatchPress(string n)
     {
-        foreach (var prefix in new[] { "press ", "hit ", "press the " })
+        foreach (var prefix in new[] { "press the ", "press ", "hit the ", "hit ", "tap " })
         {
             if (n.StartsWith(prefix, StringComparison.Ordinal))
             {
@@ -293,9 +452,9 @@ public sealed class CommandParser
                     key = key[..^4];
                 }
 
-                if (key.StartsWith("the ", StringComparison.Ordinal))
+                if (key.EndsWith(" button", StringComparison.Ordinal))
                 {
-                    key = key[4..];
+                    key = key[..^7];
                 }
 
                 return PressableKeys.TryGetValue(key, out var chord) ? new VoiceCommand(CommandKind.PressKeys, chord) : null;

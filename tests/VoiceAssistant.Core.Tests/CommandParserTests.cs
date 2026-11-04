@@ -45,7 +45,6 @@ public class CommandParserTests
     [Theory]
     [InlineData("Open GitHub Co-Pilot.", "github copilot")]
     [InlineData("open github copilot", "github copilot")]
-    [InlineData("Switch to Notepad.", "notepad")]
     [InlineData("Launch Microsoft Teams", "microsoft teams")]
     public void Open_app_in_command_mode(string heard, string app)
     {

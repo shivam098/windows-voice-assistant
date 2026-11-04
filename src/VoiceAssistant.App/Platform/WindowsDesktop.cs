@@ -32,11 +32,31 @@ internal sealed class WindowsDesktop : IDesktop
         return new WindowRef(hwnd, (int)pid, ProcessName((int)pid), Win32.GetWindowTitle(hwnd));
     }
 
-    public async Task<DesktopResult> OpenOrActivateAsync(AppEntry app, CancellationToken cancellationToken)
+    public async Task<DesktopResult> OpenOrActivateAsync(AppEntry app, bool newWindow, CancellationToken cancellationToken)
     {
         if (app.ProcessNames.Count > 0 && FindAppWindow(app) is { } existing)
         {
-            return await ActivateAsync(existing, app.Name, cancellationToken).ConfigureAwait(false);
+            var activated = await ActivateAsync(existing, app.Name, cancellationToken).ConfigureAwait(false);
+            Log.Info($"open {app.Name}: existing window {(activated.Success ? "activated" : "activation failed")}");
+            if (!activated.Success || !newWindow || app.NewWindowKeys is not { } newWindowKeys)
+            {
+                return activated;
+            }
+
+            // "Open Notepad" means a fresh window, not the document that's already open.
+            var known = FindAppWindows(app).Select(w => w.Handle).ToHashSet();
+            KeyboardInput.WaitForModifiersReleased();
+            if (!existing.SameWindow(GetForegroundWindow()))
+            {
+                return DesktopResult.Fail($"Focus moved away from {app.Name}, so I didn't open a new window.");
+            }
+
+            KeyboardInput.PressChord(newWindowKeys);
+            var fresh = await WaitForNewWindowAsync(app, known, cancellationToken).ConfigureAwait(false);
+            Log.Info($"open {app.Name}: new window {(fresh is null ? "did not appear" : "opened")}");
+            return fresh is null
+                ? DesktopResult.Fail($"{app.Name} didn't open a new window. Say “switch to {app.Name}” to use the open one.")
+                : DesktopResult.Ok($"Opened a new {app.Name} window.", fresh);
         }
 
         var before = GetForegroundWindow();
@@ -65,19 +85,61 @@ internal sealed class WindowsDesktop : IDesktop
             {
                 if (FindAppWindow(app) is { } started)
                 {
-                    return await ActivateAsync(started, app.Name, cancellationToken).ConfigureAwait(false);
+                    var activated = await ActivateAsync(started, app.Name, cancellationToken).ConfigureAwait(false);
+                    Log.Info($"open {app.Name}: launched, {(activated.Success ? "activated" : "activation failed")}");
+                    if (activated.Success && app.NewDocumentKeys is { } newDocumentKeys)
+                    {
+                        // Apps that restore previous documents on launch (Notepad) get a blank one to type into.
+                        await Task.Delay(500, cancellationToken).ConfigureAwait(false);
+                        KeyboardInput.WaitForModifiersReleased();
+                        if (started.SameWindow(GetForegroundWindow()))
+                        {
+                            KeyboardInput.PressChord(newDocumentKeys);
+                            await Task.Delay(300, cancellationToken).ConfigureAwait(false);
+                        }
+                    }
+
+                    return activated;
                 }
             }
             else if (GetForegroundWindow() is { } now && !now.SameWindow(before))
             {
                 // Some window came to the front, but we can't prove it belongs to the app: report without a window.
+                Log.Info($"open {app.Name}: launched (window not identifiable)");
                 return DesktopResult.Ok($"Opened {app.Name}.");
             }
         }
 
+        Log.Info($"open {app.Name}: launched, window not seen");
         return app.ProcessNames.Count > 0
             ? DesktopResult.Fail($"{app.Name} is starting, but its window didn't appear.")
             : DesktopResult.Ok($"Asked Windows to open {app.Name}.");
+    }
+
+    private async Task<WindowRef?> WaitForNewWindowAsync(AppEntry app, HashSet<nint> known, CancellationToken ct)
+    {
+        for (var i = 0; i < 16; i++)
+        {
+            await Task.Delay(250, ct).ConfigureAwait(false);
+            var fresh = FindAppWindows(app).FirstOrDefault(w => !known.Contains(w.Handle));
+            if (fresh is null)
+            {
+                continue;
+            }
+
+            if (!fresh.SameWindow(GetForegroundWindow()))
+            {
+                var activated = await ActivateAsync(fresh, app.Name, ct).ConfigureAwait(false);
+                if (!activated.Success)
+                {
+                    return null;
+                }
+            }
+
+            return fresh;
+        }
+
+        return null;
     }
 
     public async Task<TextTargetResult> PrepareTextTargetAsync(WindowRef window, AppEntry? profile, CancellationToken cancellationToken)
@@ -270,7 +332,7 @@ internal sealed class WindowsDesktop : IDesktop
                 return new TextTargetResult(false, "I couldn't check the focused field. Click into the text box, then say “start typing”.");
         }
 
-        return new TextTargetResult(true, string.Empty, HasTrailingText(focused));
+        return new TextTargetResult(true, string.Empty, HasTrailingText(focused), IsEditable(focused));
     }
 
     private static FieldCheck Check(AutomationElement? element)
@@ -430,7 +492,7 @@ internal sealed class WindowsDesktop : IDesktop
             Win32.ShowWindow(window.Handle, Win32.SW_RESTORE);
         }
 
-        for (var attempt = 0; attempt < 3; attempt++)
+        for (var attempt = 0; attempt < 5; attempt++)
         {
             TrySetForeground(window.Handle);
             for (var i = 0; i < 6; i++)
@@ -443,6 +505,7 @@ internal sealed class WindowsDesktop : IDesktop
             }
         }
 
+        Log.Warn($"activation of {appName} refused by Windows");
         return DesktopResult.Fail($"Windows didn't let me bring {appName} to the front. Click it once, then say “start typing”.");
     }
 
@@ -481,9 +544,12 @@ internal sealed class WindowsDesktop : IDesktop
         }
     }
 
-    private WindowRef? FindAppWindow(AppEntry app)
+    private WindowRef? FindAppWindow(AppEntry app) => FindAppWindows(app).FirstOrDefault();
+
+    /// <summary>The app's visible top-level windows, front-most first.</summary>
+    private List<WindowRef> FindAppWindows(AppEntry app)
     {
-        WindowRef? found = null;
+        var found = new List<WindowRef>();
         Win32.EnumWindows((hwnd, _) =>
         {
             if (!Win32.IsWindowVisible(hwnd) || Win32.GetWindow(hwnd, Win32.GW_OWNER) != 0 || Win32.IsCloaked(hwnd))
@@ -511,8 +577,7 @@ internal sealed class WindowsDesktop : IDesktop
             var name = ProcessName((int)pid);
             if (app.ProcessNames.Any(p => string.Equals(p, name, StringComparison.OrdinalIgnoreCase)))
             {
-                found = new WindowRef(hwnd, (int)pid, name, title);
-                return false;
+                found.Add(new WindowRef(hwnd, (int)pid, name, title));
             }
 
             return true;

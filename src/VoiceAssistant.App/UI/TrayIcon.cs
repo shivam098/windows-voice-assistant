@@ -40,6 +40,7 @@ internal sealed class TrayIcon : IDisposable
         menu.Items.Add(new ToolStripMenuItem("Voice commands…", null, (_, _) => ShowCommands()));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_startAtSignIn);
+        menu.Items.Add(new ToolStripMenuItem("Forget what I've learned", null, (_, _) => host.ForgetLearned()));
         menu.Items.Add(new ToolStripMenuItem("Open settings file", null, (_, _) => OpenSettings()));
         menu.Items.Add(new ToolStripMenuItem("Open logs folder", null, (_, _) => Open(AppPaths.LogsDir)));
         menu.Items.Add(new ToolStripSeparator());

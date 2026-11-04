@@ -323,9 +323,14 @@ public class InteractionControllerTests
 
         public WindowRef? GetForegroundWindow() => Foreground;
 
-        public Task<DesktopResult> OpenOrActivateAsync(AppEntry app, CancellationToken cancellationToken)
+        public List<bool> NewWindowRequests { get; } = [];
+
+        public bool? FocusIsEditable { get; set; } = true;
+
+        public Task<DesktopResult> OpenOrActivateAsync(AppEntry app, bool newWindow, CancellationToken cancellationToken)
         {
             Actions.Add($"open:{app.Name}");
+            NewWindowRequests.Add(newWindow);
             OnOpen?.Invoke();
             if (UnconfirmedOpen)
             {
@@ -344,7 +349,7 @@ public class InteractionControllerTests
         public Task<TextTargetResult> PrepareTextTargetAsync(WindowRef window, AppEntry? profile, CancellationToken cancellationToken)
         {
             Actions.Add($"prepare:{window.ProcessName}:{profile?.TextArea ?? "none"}");
-            return Task.FromResult(new TextTargetResult(PrepareSucceeds, PrepareSucceeds ? string.Empty : "no box", TrailingText));
+            return Task.FromResult(new TextTargetResult(PrepareSucceeds, PrepareSucceeds ? string.Empty : "no box", TrailingText, FocusIsEditable));
         }
 
         public FieldCheck CheckFocusedField() => Field;

@@ -26,7 +26,7 @@ internal static class SelfTest
     {
         var output = new StringBuilder();
         var settings = AppSettings.LoadOrCreate();
-        using var host = new AssistantHost(settings, ui);
+        using var host = new AssistantHost(settings, ui, persistMemory: false);
         host.Status += s => output.AppendLine($"   [{s.Mode}] {s.Kind}: {s.Message}");
         try
         {

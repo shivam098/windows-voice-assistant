@@ -59,8 +59,8 @@ public class WakeWordAndActionTests
     public async Task Standby_ignores_speech_without_the_wake_word_silently()
     {
         var before = _statuses.Count;
-        await Say("Open Notepad.");
         await Say("What's for lunch?");
+        await Say("I opened the report yesterday.");
         Assert.Empty(_desktop.Actions);
         Assert.Equal(before, _statuses.Count);
         Assert.Equal(InteractionMode.Standby, _controller.Mode);
@@ -270,9 +270,14 @@ public class WakeWordAndActionTests
 
         public WindowRef? GetForegroundWindow() => Foreground;
 
-        public Task<DesktopResult> OpenOrActivateAsync(AppEntry app, CancellationToken cancellationToken)
+        public List<bool> NewWindowRequests { get; } = [];
+
+        public bool? FocusIsEditable { get; set; } = true;
+
+        public Task<DesktopResult> OpenOrActivateAsync(AppEntry app, bool newWindow, CancellationToken cancellationToken)
         {
             Actions.Add($"open:{app.Name}");
+            NewWindowRequests.Add(newWindow);
             Foreground = OpenResults[app.Name];
             return Task.FromResult(DesktopResult.Ok("ok", Foreground));
         }
@@ -280,7 +285,7 @@ public class WakeWordAndActionTests
         public Task<TextTargetResult> PrepareTextTargetAsync(WindowRef window, AppEntry? profile, CancellationToken cancellationToken)
         {
             Actions.Add($"prepare:{window.ProcessName}:{profile?.TextArea ?? "none"}");
-            return Task.FromResult(new TextTargetResult(true, string.Empty));
+            return Task.FromResult(new TextTargetResult(true, string.Empty, null, FocusIsEditable));
         }
 
         public Task<TextTargetResult> FocusSearchBoxAsync(WindowRef window, CancellationToken cancellationToken)

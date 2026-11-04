@@ -13,7 +13,7 @@ public sealed record DesktopResult(bool Success, string Message, WindowRef? Wind
     public static DesktopResult Fail(string message) => new(false, message);
 }
 
-public sealed record TextTargetResult(bool Success, string Message, bool? HasTrailingText = null);
+public sealed record TextTargetResult(bool Success, string Message, bool? HasTrailingText = null, bool? FocusIsEditable = null);
 
 public enum FieldCheck
 {
@@ -34,10 +34,11 @@ public interface IDesktop
     WindowRef? GetForegroundWindow();
 
     /// <summary>
-    /// Opens or activates the app. A successful result with a null <see cref="DesktopResult.Window"/> means the
-    /// launch was requested but the app's window could not be positively identified.
+    /// Opens or activates the app. With <paramref name="newWindow"/>, an already-running app with
+    /// <see cref="AppEntry.NewWindowKeys"/> gets a fresh window. A successful result with a null
+    /// <see cref="DesktopResult.Window"/> means the launch was requested but the window couldn't be identified.
     /// </summary>
-    Task<DesktopResult> OpenOrActivateAsync(AppEntry app, CancellationToken cancellationToken);
+    Task<DesktopResult> OpenOrActivateAsync(AppEntry app, bool newWindow, CancellationToken cancellationToken);
 
     /// <summary>Verifies the focused control can receive text and, for profiles with a <see cref="AppEntry.TextArea"/>, focuses it.</summary>
     Task<TextTargetResult> PrepareTextTargetAsync(WindowRef window, AppEntry? profile, CancellationToken cancellationToken);

@@ -31,6 +31,8 @@ internal sealed class AssistantHost : IDisposable
     private readonly InteractionController _controller;
     private readonly DispatcherTimer _tick;
     private readonly List<float> _capture = [];
+    private readonly PhraseMemory? _memory;
+    private readonly SoundFeedback _sounds;
     private WhisperRecognizer? _recognizer;
     private SpeechDetector? _detector;
     private Task? _queueTask;
@@ -42,16 +44,26 @@ internal sealed class AssistantHost : IDisposable
     private volatile bool _pausePending = true;
     private volatile InteractionMode _mode = InteractionMode.Paused;
 
-    public AssistantHost(AppSettings settings, Dispatcher ui, IDesktop? desktop = null)
+    public AssistantHost(AppSettings settings, Dispatcher ui, IDesktop? desktop = null, bool persistMemory = true)
     {
         _settings = settings;
         _ui = ui;
         WindowsDesktop.InsertMethod = settings.InsertMethod;
-        _catalog = new AppCatalog(settings.Apps);
+        _sounds = new SoundFeedback(settings.SoundFeedback && persistMemory);
+        if (settings.LearnFromUsage)
+        {
+            _memory = new PhraseMemory();
+            if (persistMemory)
+            {
+                LearnedStore.Load(_memory);
+            }
+        }
+
+        _catalog = new AppCatalog(settings.Apps, _memory);
         _controller = new InteractionController(
             desktop ?? new WindowsDesktop(),
             _catalog,
-            new CommandParser(settings.CommandPrefix, settings.RequireCommandPrefixWhileTyping, settings.WakeWords),
+            new CommandParser(settings.CommandPrefix, settings.RequireCommandPrefixWhileTyping, settings.WakeWords, _memory),
             new ControllerOptions
             {
                 ReturnToCommandModeAfterSend = settings.ReturnToCommandModeAfterSend,
@@ -65,9 +77,11 @@ internal sealed class AssistantHost : IDisposable
                 SpokenPunctuation = settings.SpokenPunctuation,
                 Replacements = settings.Replacements,
                 Snippets = settings.Snippets,
-            }));
+            }),
+            _memory);
         _controller.Status += update =>
         {
+            PlayTransitionCue(_mode, update.Mode);
             _mode = update.Mode;
             Post(() => Status?.Invoke(update));
         };
@@ -76,6 +90,11 @@ internal sealed class AssistantHost : IDisposable
             _pausePending = true;
             StopMicrophone();
         };
+        _controller.Trace += message => Log.Info(message);
+        if (persistMemory && _memory is not null)
+        {
+            _controller.MemoryChanged += () => LearnedStore.Save(_memory);
+        }
 
         _segmenter = new UtteranceSegmenter(new SegmenterOptions { EndSilenceMs = settings.EndSilenceMs });
         _segmenter.SpeechStarted += () =>
@@ -214,6 +233,7 @@ internal sealed class AssistantHost : IDisposable
         }
 
         _capturing = true;
+        _sounds.Play(SoundFeedback.Cue.StartTyping);
         PostActivity(label);
         return Task.CompletedTask;
     });
@@ -250,6 +270,7 @@ internal sealed class AssistantHost : IDisposable
         }
 
         PostActivity(null);
+        _sounds.Play(cancel ? SoundFeedback.Cue.Standby : SoundFeedback.Cue.StopTyping);
         if (cancel)
         {
             Report(StatusKind.Info, "Dictation cancelled.");
@@ -295,6 +316,40 @@ internal sealed class AssistantHost : IDisposable
         return Task.CompletedTask;
     });
 
+    /// <summary>Forgets learned rephrasings and app usage, in memory and on disk.</summary>
+    public void ForgetLearned() => Enqueue(() =>
+    {
+        _memory?.Clear();
+        LearnedStore.Delete();
+        Report(StatusKind.Info, "Forgot everything I'd learned.");
+        return Task.CompletedTask;
+    });
+
+    private void PlayTransitionCue(InteractionMode from, InteractionMode to)
+    {
+        if (from == to)
+        {
+            return;
+        }
+
+        if (to == InteractionMode.Dictation)
+        {
+            _sounds.Play(SoundFeedback.Cue.StartTyping);
+        }
+        else if (from == InteractionMode.Dictation && to != InteractionMode.Paused)
+        {
+            _sounds.Play(SoundFeedback.Cue.StopTyping);
+        }
+        else if (from == InteractionMode.Standby && to == InteractionMode.Command)
+        {
+            _sounds.Play(SoundFeedback.Cue.Wake);
+        }
+        else if (from == InteractionMode.Command && to == InteractionMode.Standby)
+        {
+            _sounds.Play(SoundFeedback.Cue.Standby);
+        }
+    }
+
     /// <summary>Copies dictated text that couldn't be typed (focus moved) to the clipboard, then forgets it.</summary>
     public void CopyUntypedText() => Enqueue(() =>
     {
@@ -331,6 +386,7 @@ internal sealed class AssistantHost : IDisposable
 
         StopMicrophone();
         _microphone.Dispose();
+        _sounds.Dispose();
         if (drained)
         {
             _recognizer?.Dispose();

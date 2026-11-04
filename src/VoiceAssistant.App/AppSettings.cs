@@ -13,6 +13,9 @@ internal static class AppPaths
     public static string LogsDir => Path.Combine(DataDir, "logs");
 
     public static string SettingsFile { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VoiceAssistant", "settings.json");
+
+    /// <summary>Learned rephrasings and app usage counts (local only).</summary>
+    public static string LearnedFile { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VoiceAssistant", "learned.json");
 }
 
 internal sealed class AppSettings
@@ -77,7 +80,13 @@ internal sealed class AppSettings
     /// <summary>Accepted wake phrases (Whisper's common spellings of “Hey Jarvis” are included).</summary>
     public List<string> WakeWords { get; set; } = [.. CommandParser.DefaultWakeWords];
 
-    public int AwakeSeconds { get; set; } = 8;
+    public int AwakeSeconds { get; set; } = 30;
+
+    /// <summary>Short tones when the wake word is heard, typing starts/stops, and push-to-talk starts/ends.</summary>
+    public bool SoundFeedback { get; set; } = true;
+
+    /// <summary>Learn rephrasings of commands and which apps you open most (stored in learned.json).</summary>
+    public bool LearnFromUsage { get; set; } = true;
 
     /// <summary>Hold Ctrl+Win to dictate into any app (release to type). Ctrl+Win+Space toggles hands-free dictation.</summary>
     public bool PushToTalk { get; set; } = true;
@@ -123,6 +132,8 @@ internal sealed class AppSettings
             SubmitKeys = string.Empty,
             NewLineKeys = "Enter",
             TextArea = "Largest",
+            NewWindowKeys = "Ctrl+Shift+N",
+            NewDocumentKeys = "Ctrl+N",
         },
         Browser("Google Chrome", ["chrome", "google chrome"], "chrome.exe", "chrome"),
         Browser("Microsoft Edge", ["edge", "microsoft edge"], "msedge.exe", "msedge"),
