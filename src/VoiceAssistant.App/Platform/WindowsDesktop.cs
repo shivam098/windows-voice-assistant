@@ -4,7 +4,7 @@ using VoiceAssistant.Core;
 
 namespace VoiceAssistant.App.Platform;
 
-internal sealed class WindowsDesktop : IDesktop
+internal sealed partial class WindowsDesktop : IDesktop
 {
     private static readonly TimeSpan UiaTimeout = TimeSpan.FromSeconds(4);
     private readonly int _ownProcessId = Environment.ProcessId;

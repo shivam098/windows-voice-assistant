@@ -73,6 +73,13 @@ public sealed class AppCatalog
 
     public void SetDiscoveredApps(IEnumerable<AppEntry> discovered) => _discovered = discovered.ToList();
 
+    /// <summary>True if the spoken name is exactly an app's name or alias (no fuzzy matching).</summary>
+    public bool HasExactName(string spokenName)
+    {
+        var key = TranscriptText.Compact(spokenName);
+        return key.Length > 0 && _configured.Concat(_discovered).Any(a => Keys(a).Contains(key));
+    }
+
     public AppResolution Resolve(string spokenName)
     {
         var key = TranscriptText.Compact(spokenName);

@@ -15,7 +15,10 @@ namespace VoiceAssistant.App;
 ///   fg                     record the foreground process name
 ///   read                   record the focused control's type, text length and hash (not its text)
 ///   expect: &lt;text&gt;         PASS/FAIL: does the focused control contain the script's phrase (\n = line break)
+///   expecttitle: &lt;text&gt;    PASS/FAIL: does the foreground window title contain the phrase (title not written)
+///   expectfocus: &lt;name&gt;    PASS/FAIL: does the focused control's accessible name contain the phrase
 ///   insert Paste|Type      switch the insertion method
+///   stoponfail             stop the script at the first FAIL (use before steps that type)
 ///   clipboard              record a fingerprint (formats, hash, length) of the clipboard, not its text
 ///   # comment
 /// Results are written to the output file; it never contains user text, window titles, or clipboard contents.
@@ -27,9 +30,20 @@ internal static class SelfTest
         var output = new StringBuilder();
         var settings = AppSettings.LoadOrCreate();
         using var host = new AssistantHost(settings, ui, persistMemory: false);
-        host.Status += s => output.AppendLine($"   [{s.Mode}] {s.Kind}: {s.Message}");
+        host.Status += s => output.AppendLine($"   [{s.Mode}] {s.Kind}: {Redact(s.Message)}");
+        host.ChoicesChanged += b => output.AppendLine($"   choices shown: {b?.Count ?? 0}");
+
+        // The same on-screen feedback as the app, so screenshots of a self-test show what a user would see.
+        var pill = new UI.OverlayWindow();
+        pill.Show();
+        var markers = new UI.MarkerOverlay();
+        host.Status += pill.ShowStatus;
+        host.Activity += (mode, activity) => pill.ShowMode(mode, activity);
+        host.ChoicesChanged += markers.ShowBadges;
+        host.Highlight += markers.Flash;
         try
         {
+            var stopOnFail = false;
             host.StartForSelfTest();
             foreach (var raw in await File.ReadAllLinesAsync(scriptPath).ConfigureAwait(false))
             {
@@ -40,7 +54,18 @@ internal static class SelfTest
                 }
 
                 output.AppendLine($"> {line}");
-                if (line == "listen")
+                if (stopOnFail && output.ToString().Contains("   FAIL:", StringComparison.Ordinal))
+                {
+                    // A failed check means the expected window/box isn't in front: typing on could go somewhere else.
+                    output.AppendLine("!! stopped after a failed check");
+                    break;
+                }
+
+                if (line == "stoponfail")
+                {
+                    stopOnFail = true;
+                }
+                else if (line == "listen")
                 {
                     await host.RunOnQueueAsync(() => { host.Controller.SetListening(true); return Task.CompletedTask; }).ConfigureAwait(false);
                 }
@@ -82,6 +107,22 @@ internal static class SelfTest
                 {
                     var text = ReadFocusedText();
                     output.AppendLine($"   focused: {text.Type} len={text.Value.Length} hash={Hash(text.Value)}");
+                }
+                else if (line.StartsWith("expectfocus:", StringComparison.Ordinal))
+                {
+                    // PASS/FAIL: is the focused control the one with this accessible name (a label from the test page).
+                    var expected = line[12..].Trim();
+                    var name = FocusedName();
+                    var pass = name.Contains(expected, StringComparison.OrdinalIgnoreCase);
+                    output.AppendLine($"   {(pass ? "PASS" : "FAIL")}: focused control {(pass ? "has" : "does not have")} the expected name");
+                }
+                else if (line.StartsWith("expecttitle:", StringComparison.Ordinal))
+                {
+                    // PASS/FAIL only: the title itself is never written.
+                    var expected = line[12..].Trim();
+                    var title = new Platform.WindowsDesktop().GetForegroundWindow()?.Title ?? string.Empty;
+                    var pass = title.Contains(expected, StringComparison.OrdinalIgnoreCase);
+                    output.AppendLine($"   {(pass ? "PASS" : "FAIL")}: foreground title {(pass ? "contains" : "does not contain")} the expected phrase");
                 }
                 else if (line.StartsWith("expect:", StringComparison.Ordinal))
                 {
@@ -126,6 +167,23 @@ internal static class SelfTest
 
     private static string Hash(string text) =>
         Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..12];
+
+    /// <summary>Names, titles and heard text appear in “quotes” in status messages; keep them out of the output.</summary>
+    private static string Redact(string message) =>
+        System.Text.RegularExpressions.Regex.Replace(message, "“[^”]*”", "“…”");
+
+    private static string FocusedName()
+    {
+        try
+        {
+            var task = Task.Run(() => AutomationElement.FocusedElement?.Current.Name ?? string.Empty);
+            return task.Wait(2000) ? task.Result : string.Empty;
+        }
+        catch (AggregateException)
+        {
+            return string.Empty;
+        }
+    }
 
     private static (string Type, string Value) ReadFocusedText()
     {

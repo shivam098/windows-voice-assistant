@@ -16,6 +16,7 @@ public partial class App : System.Windows.Application
     private GlobalHotkey? _languageHotkey;
     private DictationKeyHook? _keyHook;
     private OverlayWindow? _overlay;
+    private MarkerOverlay? _markers;
     private DictationState _dictation;
 
     private enum DictationState
@@ -81,6 +82,9 @@ public partial class App : System.Windows.Application
         _host.DictationPreview += _overlay.ShowPreview;
         _host.DictationLanguageChanged += _overlay.SetDictationLanguage;
         _overlay.SetDictationLanguage(_host.HinglishDictation);
+        _markers = new MarkerOverlay();
+        _host.ChoicesChanged += _markers.ShowBadges;
+        _host.Highlight += _markers.Flash;
 
         _hotkey = TryRegister(settings.Hotkey, _host.ToggleListening, "pause/resume");
         _pasteHotkey = TryRegister(settings.PasteLastHotkey, _host.PasteLastTranscript, "paste last dictation");

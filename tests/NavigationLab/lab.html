@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nav Lab</title>
+<style>
+  body { font: 16px "Segoe UI", sans-serif; margin: 0; display: grid; grid-template-columns: 260px 1fr 220px; height: 100vh; background: #1d1d20; color: #eee; }
+  nav, aside { padding: 16px; display: flex; flex-direction: column; gap: 10px; background: #26262b; }
+  main { padding: 24px; display: flex; flex-direction: column; justify-content: space-between; }
+  button, a { font: inherit; padding: 10px 14px; border-radius: 8px; border: 1px solid #555; background: #333; color: #eee; text-align: left; cursor: pointer; text-decoration: none; }
+  #log { font-size: 22px; color: #8ab4f8; }
+  input { font: inherit; padding: 12px; border-radius: 8px; border: 1px solid #666; background: #111; color: #eee; width: 100%; box-sizing: border-box; }
+</style>
+</head>
+<body>
+<!-- Test page for voice navigation (see docs/specs/navigation.md). Clicks are shown in the title so tests can verify them. -->
+<nav aria-label="Left pane">
+  <button>New</button>
+  <button>Pull requests</button>
+  <button>Issues</button>
+  <a href="#library">Library</a>
+</nav>
+<main>
+  <div id="log">Nothing clicked yet</div>
+  <input aria-label="Message" placeholder="Message">
+</main>
+<aside aria-label="Right pane">
+  <button>New</button>
+  <button>Delete account</button>
+</aside>
+<script>
+  for (const el of document.querySelectorAll('button, a')) {
+    el.addEventListener('click', e => {
+      e.preventDefault();
+      const side = el.closest('nav') ? 'left' : 'right';
+      const text = `clicked ${el.textContent} ${side}`;
+      document.getElementById('log').textContent = text;
+      document.title = `Nav Lab - ${text}`;
+    });
+  }
+</script>
+</body>
+</html>

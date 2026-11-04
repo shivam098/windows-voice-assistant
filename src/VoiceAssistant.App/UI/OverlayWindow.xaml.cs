@@ -29,6 +29,7 @@ public partial class OverlayWindow : Window
             _fade.Stop();
             MessageText.Visibility = Visibility.Collapsed;
             HeardText.Visibility = Visibility.Collapsed;
+            PlaceText.Visibility = Visibility.Collapsed;
             UpdateVisibility();
         };
         SourceInitialized += (_, _) =>
@@ -103,6 +104,11 @@ public partial class OverlayWindow : Window
         MessageText.Visibility = string.IsNullOrEmpty(update.Message) ? Visibility.Collapsed : Visibility.Visible;
         HeardText.Text = string.IsNullOrEmpty(update.Heard) ? string.Empty : $"Heard: “{update.Heard}”";
         HeardText.Visibility = string.IsNullOrEmpty(update.Heard) ? Visibility.Collapsed : Visibility.Visible;
+
+        // The place shows with the message that put us there, so it is never stale.
+        PlaceText.Text = string.IsNullOrEmpty(update.Place) ? string.Empty : "📍 " + update.Place;
+        PlaceText.Visibility = string.IsNullOrEmpty(update.Place) ? Visibility.Collapsed : Visibility.Visible;
+
         _fade.Stop();
         _fade.Start();
         UpdateVisibility();

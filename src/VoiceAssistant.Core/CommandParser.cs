@@ -38,9 +38,36 @@ public enum CommandKind
 
     /// <summary>Press the key chord in the argument (e.g. "Ctrl+T").</summary>
     PressKeys,
+
+    /// <summary>Select a browser tab by position or name (<see cref="VoiceCommand.Target"/>).</summary>
+    SelectTab,
+
+    /// <summary>Click an element in the front window by name, with optional region/ordinal hints.</summary>
+    Click,
+
+    /// <summary>Focus a text box by name (“message box”) and start typing there.</summary>
+    FocusField,
+
+    /// <summary>Show numbers on everything clickable in the front window.</summary>
+    ShowNumbers,
+
+    HideNumbers,
+
+    /// <summary>Pick numbered choice <see cref="VoiceCommand.Argument"/>.</summary>
+    Choose,
+
+    /// <summary>“yes”: perform the action waiting for confirmation.</summary>
+    Confirm,
+
+    /// <summary>“no” / “cancel”: drop pending choices and confirmations.</summary>
+    Cancel,
 }
 
-public sealed record VoiceCommand(CommandKind Kind, string? Argument = null);
+public sealed record VoiceCommand(CommandKind Kind, string? Argument = null)
+{
+    /// <summary>For <see cref="CommandKind.SelectTab"/>, <see cref="CommandKind.Click"/> and <see cref="CommandKind.FocusField"/>.</summary>
+    public ElementTarget? Target { get; init; }
+}
 
 public sealed record ParsedUtterance
 {
@@ -62,12 +89,15 @@ public sealed record ParsedUtterance
     /// <summary>The utterance started with the wake word.</summary>
     public bool WokeUp { get; init; }
 
+    /// <summary>A full command said with the wake word while typing: typing stops before it runs.</summary>
+    public bool LeavesTyping { get; init; }
+
     public bool IsWakeOnly => WokeUp && Commands.Count == 0 && DictationText is null && Unrecognized is null;
 
     public bool IsEmpty => !WokeUp && Commands.Count == 0 && DictationText is null && Unrecognized is null;
 }
 
-public sealed class CommandParser
+public sealed partial class CommandParser
 {
     public static readonly IReadOnlyList<string> DefaultWakeWords =
         ["hey jarvis", "hi jarvis", "hello jarvis", "ok jarvis", "okay jarvis", "a jarvis", "hey jervis", "hey javis", "jarvis"];
@@ -245,6 +275,13 @@ public sealed class CommandParser
                     return new ParsedUtterance { Commands = [command], WokeUp = woke, CommandText = text, FromLearnedPhrase = learned };
                 }
 
+                if (prefixed && MatchCommandMode(text) is { } full)
+                {
+                    // "Hey Jarvis, go to the first tab" while typing: any command works after the wake word, and
+                    // typing stops first so nothing lands in the new place.
+                    return new ParsedUtterance { Commands = full, WokeUp = woke, CommandText = text, LeavesTyping = true };
+                }
+
                 return prefixed
                     ? new ParsedUtterance { Unrecognized = text, WokeUp = woke }
                     : new ParsedUtterance { DictationText = cleaned };
@@ -336,6 +373,7 @@ public sealed class CommandParser
         if (MatchFocusTarget(n, SearchTargets)) return [new VoiceCommand(CommandKind.FocusSearch)];
         if (Shortcuts.TryGetValue(n, out var shortcut)) return [new VoiceCommand(CommandKind.PressKeys, shortcut)];
         if (MatchPress(n) is { } press) return [press];
+        if (MatchNavigation(n) is { } navigation) return navigation;
 
         foreach (var prefix in new[] { "search for ", "search the web for ", "search google for ", "google ", "look up ", "search " })
         {
