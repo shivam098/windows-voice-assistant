@@ -122,6 +122,7 @@ internal sealed class AssistantHost : IDisposable
                 await StopPreviewAsync().ConfigureAwait(false);
                 StopMicrophone();
                 _capturing = false;
+                PostActivity(null);
                 _controller.SetListening(false);
                 Report(StatusKind.Error, $"The microphone stopped. Press {_settings.Hotkey} to try again.");
             });

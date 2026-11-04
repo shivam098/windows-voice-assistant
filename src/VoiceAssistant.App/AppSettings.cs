@@ -18,6 +18,9 @@ internal static class AppPaths
 
     public static string LogsDir => Path.Combine(DataDir, "logs");
 
+    /// <summary>Present while the status pill is minimized (shown only while it has something to say).</summary>
+    public static string OverlayMinimizedFlag => Path.Combine(DataDir, "overlay-minimized");
+
     public static string SettingsFile { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VoiceAssistant", "settings.json");
 
     /// <summary>Learned rephrasings and app usage counts (local only).</summary>

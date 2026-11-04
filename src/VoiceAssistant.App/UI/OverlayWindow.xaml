@@ -9,7 +9,6 @@
         ShowInTaskbar="False"
         ShowActivated="False"
         Focusable="False"
-        IsHitTestVisible="False"
         ResizeMode="NoResize"
         SizeToContent="WidthAndHeight">
     <Border x:Name="Pill"
@@ -28,6 +27,21 @@
                 <TextBlock x:Name="MessageText" Foreground="#E8EAED" FontSize="12" TextTrimming="CharacterEllipsis" MaxWidth="500" Visibility="Collapsed" />
                 <TextBlock x:Name="HeardText" Foreground="#9AA0A6" FontSize="11" FontStyle="Italic" TextTrimming="CharacterEllipsis" MaxWidth="500" Visibility="Collapsed" />
             </StackPanel>
+            <Button x:Name="MinimizeButton" Focusable="False" Cursor="Hand" VerticalAlignment="Top" Margin="10,-2,-4,0"
+                    ToolTip="Hide until needed (it reappears when you dictate or say “Hey Jarvis”). Show it again from the tray icon.">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome" Width="20" Height="20" CornerRadius="10" Background="Transparent">
+                            <TextBlock Text="–" Foreground="#9AA0A6" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-2,0,0" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#33FFFFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
         </StackPanel>
     </Border>
 </Window>

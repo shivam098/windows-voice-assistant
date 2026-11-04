@@ -19,7 +19,7 @@ internal sealed class TrayIcon : IDisposable
     private readonly ToolStripMenuItem _startAtSignIn;
     private readonly string _hotkey;
 
-    public TrayIcon(AssistantHost host, string hotkey, Action exit)
+    public TrayIcon(AssistantHost host, string hotkey, OverlayWindow overlay, Action exit)
     {
         _hotkey = hotkey;
         _icons[InteractionMode.Paused] = MakeIcon(Color.FromArgb(154, 160, 166));
@@ -30,8 +30,10 @@ internal sealed class TrayIcon : IDisposable
         _status = new ToolStripMenuItem("Starting…") { Enabled = false };
         _toggle = new ToolStripMenuItem($"Start listening\t{hotkey}", null, (_, _) => host.ToggleListening());
         _startAtSignIn = new ToolStripMenuItem("Start when I sign in", null, (_, _) => ToggleStartAtSignIn()) { Checked = IsStartAtSignIn() };
+        var showPill = new ToolStripMenuItem("Always show status pill", null, (_, _) => overlay.Minimized = !overlay.Minimized);
 
         var menu = new ContextMenuStrip();
+        menu.Opening += (_, _) => showPill.Checked = !overlay.Minimized;
         menu.Items.Add(_status);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_toggle);
@@ -39,6 +41,7 @@ internal sealed class TrayIcon : IDisposable
         menu.Items.Add(new ToolStripMenuItem("Copy text that wasn't typed", null, (_, _) => host.CopyUntypedText()));
         menu.Items.Add(new ToolStripMenuItem("Voice commands…", null, (_, _) => ShowCommands()));
         menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(showPill);
         menu.Items.Add(_startAtSignIn);
         menu.Items.Add(new ToolStripMenuItem("Forget what I've learned", null, (_, _) => host.ForgetLearned()));
         menu.Items.Add(new ToolStripMenuItem("Open settings file", null, (_, _) => OpenSettings()));
@@ -77,7 +80,8 @@ internal sealed class TrayIcon : IDisposable
         _toggle.Text = (mode == InteractionMode.Paused ? "Start listening" : "Pause listening") + $"\t{_hotkey}";
     }
 
-    public void ShowBalloon(string message) => _icon.ShowBalloonTip(4000, "Voice Assistant", message, ToolTipIcon.Warning);
+    public void ShowBalloon(string message, bool warning = true) =>
+        _icon.ShowBalloonTip(4000, "Voice Assistant", message, warning ? ToolTipIcon.Warning : ToolTipIcon.Info);
 
     public void Dispose()
     {
@@ -122,6 +126,8 @@ internal sealed class TrayIcon : IDisposable
           Esc → cancel   ·   Alt+Shift+Z → paste last dictation
           Say “comma”, “question mark”, “new line”; “um/uh” are removed;
           “…scratch that…” drops the phrase before it.
+          Click “–” on the status pill to hide it until it's needed
+          (tray menu › Always show status pill brings it back).
 
         VOICE COMMANDS — start with “Hey Jarvis” (then 8 s without it)
           “Hey Jarvis, open Notepad”  ·  “…open Chrome”  ·  “…open GitHub Copilot”

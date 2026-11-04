@@ -57,11 +57,20 @@ public partial class App : System.Windows.Application
         DispatcherUnhandledException += OnUnhandledException;
 
         var settings = AppSettings.LoadOrCreate();
-        _overlay = new OverlayWindow();
+        _overlay = new OverlayWindow(commandModeIsIdle: !settings.WakeWordEnabled);
         _overlay.Show();
+        _overlay.Minimized = File.Exists(AppPaths.OverlayMinimizedFlag);
 
         _host = new AssistantHost(settings, Dispatcher);
-        _tray = new TrayIcon(_host, settings.Hotkey, () => Shutdown());
+        _tray = new TrayIcon(_host, settings.Hotkey, _overlay, () => Shutdown());
+        _overlay.MinimizedChanged += minimized =>
+        {
+            SaveOverlayMinimized(minimized);
+            if (minimized)
+            {
+                _tray.ShowBalloon("The status pill now appears only while you dictate or give a command. Tray menu › Always show status pill brings it back.", warning: false);
+            }
+        };
         _host.Status += update =>
         {
             _overlay.ShowStatus(update);
@@ -165,6 +174,26 @@ public partial class App : System.Windows.Application
                 End(cancel: true);
             }
         };
+    }
+
+    private static void SaveOverlayMinimized(bool minimized)
+    {
+        try
+        {
+            if (minimized)
+            {
+                Directory.CreateDirectory(AppPaths.DataDir);
+                File.WriteAllText(AppPaths.OverlayMinimizedFlag, string.Empty);
+            }
+            else
+            {
+                File.Delete(AppPaths.OverlayMinimizedFlag);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log.Warn($"couldn't save the status pill state: {ex.GetType().Name}");
+        }
     }
 
     private GlobalHotkey? TryRegister(string chord, Action action, string purpose)
