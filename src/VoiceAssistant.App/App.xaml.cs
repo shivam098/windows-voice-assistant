@@ -68,6 +68,7 @@ public partial class App : System.Windows.Application
             _tray.Update(update.Mode);
         };
         _host.Activity += (mode, activity) => _overlay.ShowMode(mode, activity);
+        _host.DictationPreview += _overlay.ShowPreview;
 
         _hotkey = TryRegister(settings.Hotkey, _host.ToggleListening, "pause/resume");
         _pasteHotkey = TryRegister(settings.PasteLastHotkey, _host.PasteLastTranscript, "paste last dictation");

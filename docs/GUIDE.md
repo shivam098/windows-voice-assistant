@@ -30,7 +30,7 @@ To uninstall: `.\scripts\uninstall.ps1` (add `-RemoveData` to also delete models
 ### Dictate anywhere
 
 1. Click into any text box (email, chat, document, browser).
-2. **Hold `Ctrl` + `Win`**, speak, **release**. The text appears at the cursor.
+2. **Hold `Ctrl` + `Win`** and speak. Your words appear live in the overlay at the bottom of the screen; **release** and the text appears at the cursor.
 3. For longer dictation press **`Ctrl` + `Win` + `Space`**, talk, and press it again to insert.
 4. `Esc` cancels; `Alt` + `Shift` + `Z` pastes the last dictation again.
 
@@ -92,6 +92,7 @@ Not supported: 32-bit Windows.
    ```powershell
    dotnet run --project tools/SpeechBench -c Release -r win-arm64 -- --pipeline        # scripted clips
    dotnet run --project tools/SpeechBench -c Release -r win-arm64 -- --live 30         # your microphone
+   dotnet run --project tools/SpeechBench -c Release -r win-arm64 -- --preview         # live Ctrl+Win preview timing
    ```
 4. Install your build: `.\scripts\install.ps1`.
 5. Logs (timings and states only, never words): `%LOCALAPPDATA%\VoiceAssistant\logs`.

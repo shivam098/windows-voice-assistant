@@ -97,6 +97,9 @@ internal sealed class AppSettings
     /// <summary>Hold Ctrl+Win to dictate into any app (release to type). Ctrl+Win+Space toggles hands-free dictation.</summary>
     public bool PushToTalk { get; set; } = true;
 
+    /// <summary>Show the words in the overlay as you speak while Ctrl+Win dictation records (uses extra CPU while recording).</summary>
+    public bool LivePreview { get; set; } = true;
+
     public string PasteLastHotkey { get; set; } = "Alt+Shift+Z";
 
     public bool RemoveFillerWords { get; set; } = true;

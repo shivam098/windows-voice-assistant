@@ -65,6 +65,30 @@ public partial class OverlayWindow : Window
         _fade.Start();
     }
 
+    /// <summary>Shows the live transcript while dictation records; null hides it. Long text keeps its latest words.</summary>
+    public void ShowPreview(string? text)
+    {
+        const int MaxChars = 150;
+        if (string.IsNullOrEmpty(text))
+        {
+            LiveText.Text = string.Empty;
+            LiveText.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        if (text.Length > MaxChars)
+        {
+            var start = text.Length - MaxChars;
+            var space = text.IndexOf(' ', start);
+            text = "…" + text[(space > 0 && space < text.Length - 1 ? space + 1 : start)..];
+        }
+
+        LiveText.Text = text;
+        LiveText.Visibility = Visibility.Visible;
+        MessageText.Visibility = Visibility.Collapsed;
+        HeardText.Visibility = Visibility.Collapsed;
+    }
+
     private void Reposition()
     {
         var area = SystemParameters.WorkArea;

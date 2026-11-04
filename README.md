@@ -45,7 +45,7 @@ Put the cursor in any text box, then:
 
 | Do | Result |
 |---|---|
-| **Hold `Ctrl`+`Win`**, speak, release | Your words are inserted at the cursor |
+| **Hold `Ctrl`+`Win`**, speak, release | Your words show live in the overlay while you speak, then are inserted at the cursor |
 | **`Ctrl`+`Win`+`Space`** | Hands-free dictation; press again to insert |
 | **`Esc`** while recording | Cancel |
 | **`Alt`+`Shift`+`Z`** | Paste the last dictation again |
@@ -123,6 +123,7 @@ Speak naturally — polite padding is understood: *“Hey Jarvis, can you open N
 | `learnFromUsage` | `true` | Learn rephrasings and app usage (`learned.json`) |
 | `soundFeedback` | `true` | Tones on wake, typing start/stop, push-to-talk |
 | `pushToTalk` | `true` | `Ctrl+Win` dictation keys |
+| `livePreview` | `true` | Show words in the overlay while `Ctrl+Win` dictation records (re-transcribes every ~0.6 s; uses extra CPU while recording) |
 | `pasteLastHotkey` | `Alt+Shift+Z` | |
 | `insertMethod` | `Paste` | `Type` sends keystrokes instead (some apps drop characters) |
 | `removeFillerWords` / `spokenPunctuation` | `true` | Dictation clean-up |
@@ -138,6 +139,7 @@ Speak naturally — polite padding is understood: *“Hey Jarvis, can you open N
 
 ```text
 Microphone ─┬─ (Ctrl+Win held) ─────────────► capture ─► Silero chunks ─► Whisper ─► format ─► paste at cursor
+            │                                   └─► live preview (Whisper every ~0.6 s) ─► overlay
             └─ UtteranceSegmenter (pauses) ─► Silero (drop noise, split) ─► Whisper ─► CommandParser
                                                                                     ─► InteractionController
                                                                                     ─► Win32 + UI Automation
