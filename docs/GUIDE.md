@@ -54,11 +54,16 @@ Speak naturally — “can you please open Notepad for me” works. If it doesn'
 
 ## 3. Share with friends (portable zip)
 
+**Easiest:** send the link to the latest [GitHub release](https://github.com/shivam098/windows-voice-assistant/releases). Release zips are built automatically on a clean Windows machine and include everything the app needs (.NET and the Visual C++ runtime).
+
+To build zips yourself:
+
 1. Build the zips:
    ```powershell
    .\scripts\package.ps1                  # dist\VoiceAssistant-<version>-win-x64.zip and -win-arm64.zip (~70 MB)
    .\scripts\package.ps1 -IncludeModels   # adds the models (~340 MB) so it works offline
    ```
+   The Visual C++ runtime is bundled only if Visual Studio or Build Tools (C++ workload) is installed; otherwise the script warns and the zip needs the [Visual C++ Redistributable](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist) on the friend's PC.
 2. Send the right zip — **win-x64** for Intel/AMD PCs (most), **win-arm64** for Snapdragon/ARM PCs — via OneDrive, Google Drive, WhatsApp, or a GitHub release.
 3. Your friend:
    1. Unzips the folder anywhere and double-clicks `VoiceAssistant.exe`.
@@ -103,7 +108,13 @@ Not supported: 32-bit Windows.
    git checkout main
    git pull
    ```
-5. Re-run `.\scripts\install.ps1` to use the merged version, and `.\scripts\package.ps1` to refresh the zips you share.
+5. Re-run `.\scripts\install.ps1` to use the merged version.
+6. To publish a release for friends: bump `<Version>` in `src/VoiceAssistant.App/VoiceAssistant.App.csproj`, merge, then tag and push:
+   ```powershell
+   git tag v0.3.1
+   git push origin v0.3.1
+   ```
+   GitHub Actions builds both zips (with the Visual C++ runtime) and attaches them to the release.
 
 ---
 

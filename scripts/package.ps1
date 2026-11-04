@@ -19,7 +19,13 @@ param(
     [ValidateSet('win-x64', 'win-arm64')]
     [string[]] $Runtime = @('win-x64', 'win-arm64'),
 
-    [switch] $IncludeModels
+    [switch] $IncludeModels,
+
+    # Visual Studio's VC\Redist\MSVC\<version> folder. Found automatically via vswhere when omitted.
+    [string] $VcRedistRoot,
+
+    # Fail instead of warning when the Visual C++ runtime can't be bundled (used for release builds).
+    [switch] $RequireVcRuntime
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,6 +45,44 @@ $version = ([xml](Get-Content $Project)).Project.PropertyGroup.Version | Where-O
 New-Item -ItemType Directory -Force $Dist | Out-Null
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
 
+# The Whisper native libraries need the Visual C++ runtime (vcruntime140, msvcp140, vcomp140), which not every PC
+# has. Microsoft supports app-local deployment: copy the DLLs from Visual Studio's redistributable folder.
+function Find-VcRedistRoot {
+    if ($VcRedistRoot) { return $VcRedistRoot }
+    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    if (-not (Test-Path $vswhere)) { return $null }
+    foreach ($vs in & $vswhere -all -products * -property installationPath) {
+        $msvc = Join-Path $vs 'VC\Redist\MSVC'
+        if (Test-Path $msvc) {
+            $latest = Get-ChildItem $msvc -Directory | Where-Object { $_.Name -match '^\d+\.\d+\.\d+$' } | Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+            if ($latest) { return $latest.FullName }
+        }
+    }
+
+    return $null
+}
+
+function Add-VcRuntime([string] $folder, [string] $rid) {
+    $root = Find-VcRedistRoot
+    $arch = $rid -replace '^win-', ''
+    $sources = if ($root) { Get-ChildItem (Join-Path $root $arch) -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^Microsoft\.VC\d+\.(CRT|OpenMP)$' } } else { @() }
+    foreach ($source in $sources) { Copy-Item (Join-Path $source.FullName '*.dll') $folder -Force }
+
+    # Every runtime DLL the Whisper libraries import must now be next to the exe.
+    $needed = Get-ChildItem (Join-Path $folder 'runtimes') -Recurse -Filter '*.dll' | ForEach-Object {
+        [regex]::Matches([Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($_.FullName)), '(?i)\b(vcruntime\d+(_\d)?|msvcp\d+|vcomp\d+)\.dll') | ForEach-Object { $_.Value.ToLowerInvariant() }
+    } | Sort-Object -Unique
+    $missing = @($needed | Where-Object { -not (Test-Path (Join-Path $folder $_)) })
+    if ($missing.Count -eq 0) {
+        Write-Host "    bundled Visual C++ runtime: $($needed -join ', ')" -ForegroundColor DarkGray
+        return
+    }
+
+    $message = "Visual C++ runtime not bundled for $rid (missing: $($missing -join ', ')). Install Visual Studio or Build Tools with the C++ workload, or pass -VcRedistRoot."
+    if ($RequireVcRuntime) { throw $message }
+    Write-Warning "$message The zip will only work on PCs that already have the Visual C++ Redistributable."
+}
+
 foreach ($rid in $Runtime) {
     $name = "VoiceAssistant-$version-$rid" + $(if ($IncludeModels) { '-offline' } else { '' })
     $folder = Join-Path $Dist $name
@@ -51,6 +95,7 @@ foreach ($rid in $Runtime) {
     # Whisper.net ships native libraries for every architecture; keep only this one.
     Get-ChildItem (Join-Path $folder 'runtimes') -Directory | Where-Object { $_.Name -ne $rid } | Remove-Item -Recurse -Force
     Get-ChildItem $folder -Filter '*.pdb' -Recurse | Remove-Item -Force
+    Add-VcRuntime $folder $rid
 
     if ($IncludeModels) {
         $models = New-Item -ItemType Directory -Force (Join-Path $folder 'models')
