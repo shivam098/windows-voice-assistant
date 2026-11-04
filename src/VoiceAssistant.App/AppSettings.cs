@@ -8,7 +8,13 @@ internal static class AppPaths
 {
     public static string DataDir { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VoiceAssistant");
 
-    public static string ModelsDir => Path.Combine(DataDir, "models");
+    /// <summary>
+    /// A "models" folder next to the exe (portable zip with models included) wins; otherwise per-user data,
+    /// where the installer or the first-run download puts them.
+    /// </summary>
+    public static string ModelsDir { get; } = Directory.Exists(Path.Combine(AppContext.BaseDirectory, "models"))
+        ? Path.Combine(AppContext.BaseDirectory, "models")
+        : Path.Combine(DataDir, "models");
 
     public static string LogsDir => Path.Combine(DataDir, "logs");
 

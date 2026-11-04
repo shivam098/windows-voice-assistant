@@ -9,3 +9,4 @@ publish/
 artifacts/
 *.wav
 *.bin
+dist/

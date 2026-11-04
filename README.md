@@ -26,6 +26,17 @@ The installer builds a self-contained app, downloads the speech and voice-activi
 
 Uninstall: `.\scripts\uninstall.ps1` (add `-RemoveData` to delete models, settings, and logs).
 
+## Share it (portable zip)
+
+Friends don't need to install anything:
+
+```powershell
+.\scripts\package.ps1                  # dist\VoiceAssistant-<version>-win-x64.zip and -win-arm64.zip (~70 MB each)
+.\scripts\package.ps1 -IncludeModels   # also bundles the speech models (~340 MB) for offline use
+```
+
+They unzip it, double-click `VoiceAssistant.exe` (the app isn't code-signed, so Windows SmartScreen asks once: *More info → Run anyway*), and the speech models download on first run (~265 MB, SHA-256 verified). `README-FIRST.txt` in the zip explains the shortcuts. Use **win-x64** for Intel/AMD PCs and **win-arm64** for Snapdragon/ARM PCs. Ready-made zips are attached to the [GitHub releases](https://github.com/shivam098/windows-voice-assistant/releases).
+
 ## 1. Dictate anywhere (Wispr-style)
 
 Put the cursor in any text box, then:

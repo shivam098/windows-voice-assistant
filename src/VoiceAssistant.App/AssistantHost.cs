@@ -440,13 +440,52 @@ internal sealed class AssistantHost : IDisposable
         Interlocked.Exchange(ref _actionCts, new CancellationTokenSource()).Cancel();
     }
 
+    /// <summary>
+    /// Makes sure a model file exists, downloading and verifying it on first run (portable zips ship without
+    /// models). Returns false if it is still missing.
+    /// </summary>
+    private async Task<bool> EnsureModelAsync(string file)
+    {
+        if (File.Exists(Path.Combine(AppPaths.ModelsDir, file)))
+        {
+            return true;
+        }
+
+        if (!ModelDownloader.CanDownload(file))
+        {
+            Report(StatusKind.Error, $"Speech model {file} not found in {AppPaths.ModelsDir}.");
+            return false;
+        }
+
+        Log.Info($"downloading {file}");
+        Report(StatusKind.Info, "First run: downloading the speech model (one time, stays on this PC)…");
+        try
+        {
+            await ModelDownloader.DownloadAsync(file, AppPaths.ModelsDir, percent => PostActivity($"Downloading speech model… {percent}%"), _shutdown.Token).ConfigureAwait(false);
+            Log.Info($"downloaded {file}");
+            return true;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidDataException or TaskCanceledException or UnauthorizedAccessException)
+        {
+            Log.Error($"download of {file} failed: {ex.GetType().Name}");
+            Report(StatusKind.Error, "Couldn't download the speech model. Check the internet connection and restart Voice Assistant.");
+            return false;
+        }
+        finally
+        {
+            PostActivity(null);
+        }
+    }
+
     private async Task LoadAsync()
     {
         var modelPath = Path.Combine(AppPaths.ModelsDir, _settings.ModelFile);
-        if (!File.Exists(modelPath))
+        foreach (var file in new[] { _settings.ModelFile, _settings.VadModelFile })
         {
-            Report(StatusKind.Error, $"Speech model not found ({_settings.ModelFile}). Re-run install.ps1.");
-            return;
+            if (!await EnsureModelAsync(file).ConfigureAwait(false) && file == _settings.ModelFile)
+            {
+                return;
+            }
         }
 
         PostActivity("Loading speech model…");
@@ -474,7 +513,7 @@ internal sealed class AssistantHost : IDisposable
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Log.Error($"model load failed: {ex.GetType().Name}");
-            Report(StatusKind.Error, "Couldn't load the speech model. Re-run install.ps1.");
+            Report(StatusKind.Error, "Couldn't load the speech model. Delete it from the models folder and restart to re-download.");
             return;
         }
         finally

@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <Using Include="System.IO" />
+    <Using Include="System.Net.Http" />
     <!-- WinForms is used only for the tray icon; avoid ambiguous global usings with WPF. -->
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />
