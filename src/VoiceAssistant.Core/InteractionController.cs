@@ -121,7 +121,16 @@ public sealed class InteractionController
     /// <param name="followsForcedCut">
     /// The audio continues a sentence that was cut at the length cap, so it is typed (or ignored) but never run as a command.
     /// </param>
-    public async Task HandleTranscriptAsync(string transcript, float confidence, bool followsForcedCut = false, CancellationToken cancellationToken = default)
+    /// <param name="dictationTranscript">
+    /// While typing, supplies the text to type from a second (e.g. Hindi + English) model. The command check still uses
+    /// <paramref name="transcript"/>; this is only called when the utterance is to be typed.
+    /// </param>
+    public async Task HandleTranscriptAsync(
+        string transcript,
+        float confidence,
+        bool followsForcedCut = false,
+        CancellationToken cancellationToken = default,
+        Func<Task<string>>? dictationTranscript = null)
     {
         if (Mode == InteractionMode.Paused)
         {
@@ -133,6 +142,11 @@ public sealed class InteractionController
         if (followsForcedCut && Mode == InteractionMode.Dictation)
         {
             // The tail of a sentence cut at the length cap: type it, never treat it as "send"/"stop typing".
+            if (dictationTranscript is not null)
+            {
+                heard = TranscriptText.Clean(await dictationTranscript().ConfigureAwait(false));
+            }
+
             if (heard.Length > 0)
             {
                 TypeDictated(heard, heard);
@@ -142,6 +156,18 @@ public sealed class InteractionController
         }
 
         var parsed = _parser.Parse(transcript, Mode);
+        if (dictationTranscript is not null && Mode == InteractionMode.Dictation && (parsed.IsEmpty || parsed.DictationText is not null))
+        {
+            // Not a command: what the English model heard may be empty or garbled (e.g. Hindi), so type the second model's text.
+            var text = TranscriptText.Clean(await dictationTranscript().ConfigureAwait(false));
+            if (text.Length > 0)
+            {
+                TypeDictated(text, text);
+            }
+
+            return;
+        }
+
         if (parsed.IsEmpty)
         {
             if (Mode == InteractionMode.Standby && _parser.Parse(transcript, InteractionMode.Command).Commands.Count > 0)

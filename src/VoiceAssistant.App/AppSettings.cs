@@ -21,10 +21,37 @@ internal static class AppPaths
     /// <summary>Present while the status pill is minimized (shown only while it has something to say).</summary>
     public static string OverlayMinimizedFlag => Path.Combine(DataDir, "overlay-minimized");
 
+    /// <summary>Present while dictation uses the Hindi + English model.</summary>
+    public static string HinglishDictationFlag => Path.Combine(DataDir, "dictation-hinglish");
+
     public static string SettingsFile { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VoiceAssistant", "settings.json");
 
     /// <summary>Learned rephrasings and app usage counts (local only).</summary>
     public static string LearnedFile { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VoiceAssistant", "learned.json");
+}
+
+/// <summary>On/off UI choices remembered as empty flag files, so the user's settings.json is never rewritten.</summary>
+internal static class StateFlags
+{
+    public static void Set(string path, bool on)
+    {
+        try
+        {
+            if (on)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllText(path, string.Empty);
+            }
+            else
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log.Warn($"couldn't save {Path.GetFileName(path)}: {ex.GetType().Name}");
+        }
+    }
 }
 
 internal sealed class AppSettings
@@ -42,6 +69,14 @@ internal sealed class AppSettings
 
     /// <summary>Silero voice-activity model: drops music/noise and splits merged phrases. Optional but strongly recommended.</summary>
     public string VadModelFile { get; set; } = "ggml-silero-v6.2.0.bin";
+
+    /// <summary>
+    /// Dictation model used when "Hindi + English" is switched on (Alt+Shift+H or the tray menu); types Hindi in Roman
+    /// script. Downloaded the first time it is switched on. Commands always use <see cref="ModelFile"/>.
+    /// </summary>
+    public string HinglishModelFile { get; set; } = "ggml-hinglish-swift-q8_0.bin";
+
+    public string DictationLanguageHotkey { get; set; } = "Alt+Shift+H";
 
     public int Threads { get; set; } = Math.Clamp(Environment.ProcessorCount * 2 / 3, 2, 8);
 

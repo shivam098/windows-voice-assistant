@@ -33,6 +33,7 @@ To uninstall: `.\scripts\uninstall.ps1` (add `-RemoveData` to also delete models
 2. **Hold `Ctrl` + `Win`** and speak. Your words appear live in the overlay at the bottom of the screen; **release** and the text appears at the cursor.
 3. For longer dictation press **`Ctrl` + `Win` + `Space`**, talk, and press it again to insert.
 4. `Esc` cancels; `Alt` + `Shift` + `Z` pastes the last dictation again.
+5. **Hindi + English:** press `Alt` + `Shift` + `H` (or tray › *Dictation language*) to dictate in Hindi, English, or a mix; Hindi is typed in Roman letters. The pill shows **HI + EN** while it's on. The first time, it downloads its model (~80 MB). Press again for English, which is more accurate for English-only text. Voice commands stay in English.
 
 Say punctuation (“comma”, “question mark”, “new line”); “um/uh” are removed automatically.
 

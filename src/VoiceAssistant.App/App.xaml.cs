@@ -13,6 +13,7 @@ public partial class App : System.Windows.Application
     private TrayIcon? _tray;
     private GlobalHotkey? _hotkey;
     private GlobalHotkey? _pasteHotkey;
+    private GlobalHotkey? _languageHotkey;
     private DictationKeyHook? _keyHook;
     private OverlayWindow? _overlay;
     private DictationState _dictation;
@@ -62,10 +63,10 @@ public partial class App : System.Windows.Application
         _overlay.Minimized = File.Exists(AppPaths.OverlayMinimizedFlag);
 
         _host = new AssistantHost(settings, Dispatcher);
-        _tray = new TrayIcon(_host, settings.Hotkey, _overlay, () => Shutdown());
+        _tray = new TrayIcon(_host, settings.Hotkey, settings.DictationLanguageHotkey, _overlay, () => Shutdown());
         _overlay.MinimizedChanged += minimized =>
         {
-            SaveOverlayMinimized(minimized);
+            StateFlags.Set(AppPaths.OverlayMinimizedFlag, minimized);
             if (minimized)
             {
                 _tray.ShowBalloon("The status pill now appears only while you dictate or give a command. Tray menu › Always show status pill brings it back.", warning: false);
@@ -78,9 +79,12 @@ public partial class App : System.Windows.Application
         };
         _host.Activity += (mode, activity) => _overlay.ShowMode(mode, activity);
         _host.DictationPreview += _overlay.ShowPreview;
+        _host.DictationLanguageChanged += _overlay.SetDictationLanguage;
+        _overlay.SetDictationLanguage(_host.HinglishDictation);
 
         _hotkey = TryRegister(settings.Hotkey, _host.ToggleListening, "pause/resume");
         _pasteHotkey = TryRegister(settings.PasteLastHotkey, _host.PasteLastTranscript, "paste last dictation");
+        _languageHotkey = TryRegister(settings.DictationLanguageHotkey, _host.ToggleDictationLanguage, "switch dictation language");
         if (settings.PushToTalk)
         {
             InstallDictationKeys();
@@ -95,6 +99,7 @@ public partial class App : System.Windows.Application
         _keyHook?.Dispose();
         _hotkey?.Dispose();
         _pasteHotkey?.Dispose();
+        _languageHotkey?.Dispose();
         _host?.Dispose();
         _tray?.Dispose();
         if (_ownsMutex)
@@ -174,26 +179,6 @@ public partial class App : System.Windows.Application
                 End(cancel: true);
             }
         };
-    }
-
-    private static void SaveOverlayMinimized(bool minimized)
-    {
-        try
-        {
-            if (minimized)
-            {
-                Directory.CreateDirectory(AppPaths.DataDir);
-                File.WriteAllText(AppPaths.OverlayMinimizedFlag, string.Empty);
-            }
-            else
-            {
-                File.Delete(AppPaths.OverlayMinimizedFlag);
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            Log.Warn($"couldn't save the status pill state: {ex.GetType().Name}");
-        }
     }
 
     private GlobalHotkey? TryRegister(string chord, Action action, string purpose)
