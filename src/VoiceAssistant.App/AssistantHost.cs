@@ -18,6 +18,7 @@ internal sealed class AssistantHost : IDisposable
 
     private const int MaxQueuedUtterances = 6;
     private const int SampleRate = WhisperRecognizer.SampleRate;
+    private const int PreviewIntervalMs = 600;
 
     private readonly AppSettings _settings;
     private readonly Dispatcher _ui;
@@ -33,7 +34,10 @@ internal sealed class AssistantHost : IDisposable
     private readonly List<float> _capture = [];
     private readonly PhraseMemory? _memory;
     private readonly SoundFeedback _sounds;
+    private readonly DictationFormatter _formatter;
     private WhisperRecognizer? _recognizer;
+    private CancellationTokenSource? _previewCts;
+    private Task? _previewTask;
     private SpeechDetector? _detector;
     private Task? _queueTask;
     private CancellationTokenSource _actionCts = new();
@@ -60,6 +64,13 @@ internal sealed class AssistantHost : IDisposable
         }
 
         _catalog = new AppCatalog(settings.Apps, _memory);
+        _formatter = new DictationFormatter(new DictationOptions
+        {
+            RemoveFillerWords = settings.RemoveFillerWords,
+            SpokenPunctuation = settings.SpokenPunctuation,
+            Replacements = settings.Replacements,
+            Snippets = settings.Snippets,
+        });
         _controller = new InteractionController(
             desktop ?? new WindowsDesktop(),
             _catalog,
@@ -71,13 +82,7 @@ internal sealed class AssistantHost : IDisposable
                 WakeWordEnabled = settings.WakeWordEnabled,
                 AwakeTimeout = TimeSpan.FromSeconds(Math.Max(2, settings.AwakeSeconds)),
             },
-            new DictationFormatter(new DictationOptions
-            {
-                RemoveFillerWords = settings.RemoveFillerWords,
-                SpokenPunctuation = settings.SpokenPunctuation,
-                Replacements = settings.Replacements,
-                Snippets = settings.Snippets,
-            }),
+            _formatter,
             _memory);
         _controller.Status += update =>
         {
@@ -112,13 +117,13 @@ internal sealed class AssistantHost : IDisposable
         {
             Log.Error($"microphone failed: {ex.GetType().Name}");
             CancelPendingWork();
-            Enqueue(() =>
+            Enqueue(async () =>
             {
+                await StopPreviewAsync().ConfigureAwait(false);
                 StopMicrophone();
                 _capturing = false;
                 _controller.SetListening(false);
                 Report(StatusKind.Error, $"The microphone stopped. Press {_settings.Hotkey} to try again.");
-                return Task.CompletedTask;
             });
         };
 
@@ -134,6 +139,9 @@ internal sealed class AssistantHost : IDisposable
 
     /// <summary>Raised on the UI thread with a transient activity label (null clears it).</summary>
     public event Action<InteractionMode, string?>? Activity;
+
+    /// <summary>Raised on the UI thread with the live transcript while dictation records (null clears it).</summary>
+    public event Action<string?>? DictationPreview;
 
     public InteractionMode Mode => _mode;
 
@@ -235,6 +243,13 @@ internal sealed class AssistantHost : IDisposable
         _capturing = true;
         _sounds.Play(SoundFeedback.Cue.StartTyping);
         PostActivity(label);
+        if (_settings.LivePreview)
+        {
+            _previewCts = new CancellationTokenSource();
+            var token = _previewCts.Token;
+            _previewTask = Task.Run(() => RunPreviewAsync(token));
+        }
+
         return Task.CompletedTask;
     });
 
@@ -247,6 +262,7 @@ internal sealed class AssistantHost : IDisposable
         }
 
         _capturing = false;
+        await StopPreviewAsync().ConfigureAwait(false);
         float[] audio;
         lock (_captureGate)
         {
@@ -262,7 +278,9 @@ internal sealed class AssistantHost : IDisposable
         }
         else
         {
-            // Voice listening continues; drop any half-heard phrase from before the key was pressed.
+            // Voice listening continues; drop any half-heard phrase from before the key was pressed, and any
+            // phrase the segmenter finished while the live preview was being stopped.
+            Interlocked.Increment(ref _generation);
             lock (_segmenterGate)
             {
                 _segmenter.Reset();
@@ -372,6 +390,7 @@ internal sealed class AssistantHost : IDisposable
     {
         _tick.Stop();
         CancelPendingWork();
+        _previewCts?.Cancel();
         _shutdown.Cancel();
         _queue.Writer.TryComplete();
         var drained = true;
@@ -384,6 +403,7 @@ internal sealed class AssistantHost : IDisposable
             Log.Warn($"queue ended with {ex.InnerException?.GetType().Name}");
         }
 
+        drained &= _previewTask?.Wait(TimeSpan.FromSeconds(5)) ?? true;
         StopMicrophone();
         _microphone.Dispose();
         _sounds.Dispose();
@@ -699,6 +719,90 @@ internal sealed class AssistantHost : IDisposable
     }
 
     private void Enqueue(Func<Task> work) => _queue.Writer.TryWrite(work);
+
+    /// <summary>Re-transcribes the recording so far every <see cref="PreviewIntervalMs"/> and shows it live.</summary>
+    private async Task RunPreviewAsync(CancellationToken token)
+    {
+        var recognizer = _recognizer!;
+        var detector = _detector;
+        var preview = new DictationPreview(
+            async audio =>
+            {
+                // Never cancel Whisper mid-run (it keeps running natively); the final transcription waits for it.
+                var result = await recognizer.TranscribeAsync(audio, CancellationToken.None).ConfigureAwait(false);
+                var text = TranscriptText.Clean(result.Text);
+                return audio.Length < SampleRate * 5 / 2 && KnownHallucinations.Contains(TranscriptText.Normalize(text)) ? string.Empty : text;
+            },
+            detector is null ? null : detector.Detect,
+            SampleRate);
+        var seen = 0;
+        var updates = 0;
+        var busy = TimeSpan.Zero;
+        string? shown = null;
+        try
+        {
+            while (true)
+            {
+                await Task.Delay(PreviewIntervalMs, token).ConfigureAwait(false);
+                float[] pending;
+                lock (_captureGate)
+                {
+                    if (_capture.Count - seen < SampleRate * 3 / 10)
+                    {
+                        continue;
+                    }
+
+                    seen = _capture.Count;
+                    pending = _capture.GetRange(preview.CommittedSamples, seen - preview.CommittedSamples).ToArray();
+                }
+
+                if (pending.Length < SampleRate / 2)
+                {
+                    continue;
+                }
+
+                var started = DateTime.UtcNow;
+                var text = await preview.UpdateAsync(pending).ConfigureAwait(false);
+                busy += DateTime.UtcNow - started;
+                updates++;
+                var formatted = text.Length == 0 ? string.Empty : _formatter.Format(text).Replace("\r", string.Empty).Replace("\n", " ↵ ");
+                if (!token.IsCancellationRequested && formatted != shown)
+                {
+                    shown = formatted;
+                    Post(() => DictationPreview?.Invoke(formatted));
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"live preview stopped: {ex.GetType().Name} 0x{ex.HResult:X8}");
+        }
+        finally
+        {
+            if (updates > 0)
+            {
+                Log.Info($"live preview updates={updates} avg={busy.TotalMilliseconds / updates:F0}ms");
+            }
+        }
+    }
+
+    /// <summary>Stops the live preview and waits for any in-flight transcription so the recognizer is free.</summary>
+    private async Task StopPreviewAsync()
+    {
+        var task = _previewTask;
+        _previewCts?.Cancel();
+        if (task is not null)
+        {
+            await task.ConfigureAwait(false);
+        }
+
+        _previewCts = null;
+        _previewTask = null;
+        Post(() => DictationPreview?.Invoke(null));
+    }
 
     private void Report(StatusKind kind, string message) =>
         Post(() => Status?.Invoke(new StatusUpdate(_mode, kind, message)));

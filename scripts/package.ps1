@@ -126,7 +126,7 @@ START
   Look for the purple microphone icon in the system tray (bottom-right, maybe under the ^ arrow).
 
 DICTATE ANYWHERE
-  Hold Ctrl+Win, speak, release   -> text is typed where your cursor is
+  Hold Ctrl+Win, speak, release   -> words show live as you speak, then are typed where your cursor is
   Ctrl+Win+Space                  -> hands-free dictation (press again to finish)
   Esc cancels  ·  Alt+Shift+Z pastes the last dictation again
 

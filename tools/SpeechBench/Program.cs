@@ -29,6 +29,13 @@ if (args.Length > 1 && args[0] == "--mix")
     return;
 }
 
+// --preview [intervalMs]: live push-to-talk preview over dictation clips replayed in real time.
+if (args.Length > 0 && args[0] == "--preview")
+{
+    await PreviewBench.RunAsync(DefaultModelsDir(), DefaultAudioDir(), "ggml-small.en-q8_0.bin", args.Length > 1 ? int.Parse(args[1]) : 600);
+    return;
+}
+
 var modelsDir = args.Length > 0 ? args[0] : DefaultModelsDir();
 var audioDir = args.Length > 1 ? args[1] : DefaultAudioDir();
 var models = args.Length > 2 ? args[2..] : Directory.GetFiles(modelsDir, "*.bin").Select(f => Path.GetFileName(f)).ToArray();
