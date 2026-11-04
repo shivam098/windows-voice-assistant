@@ -295,6 +295,57 @@ public class InteractionControllerTests
         Assert.DoesNotContain(_desktop.Actions, a => a.StartsWith("prepare:", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task Second_model_text_is_typed_while_dictating()
+    {
+        await StartTypingInCopilot();
+        await _controller.HandleTranscriptAsync("Kia discuss word achahe.", 0.9f, dictationTranscript: () => Task.FromResult("Kya iska svaad achchha hai?"));
+        Assert.Equal(["type:Kya iska svaad achchha hai?"], _desktop.Actions);
+    }
+
+    [Fact]
+    public async Task Second_model_is_used_when_the_english_model_heard_nothing()
+    {
+        await StartTypingInCopilot();
+        await _controller.HandleTranscriptAsync("[INAUDIBLE]", 0.9f, dictationTranscript: () => Task.FromResult("Kal milte hain."));
+        Assert.Equal(["type:Kal milte hain."], _desktop.Actions);
+    }
+
+    [Fact]
+    public async Task Commands_while_dictating_skip_the_second_model()
+    {
+        await StartTypingInCopilot();
+        var called = false;
+        await _controller.HandleTranscriptAsync("Send.", 0.9f, dictationTranscript: () =>
+        {
+            called = true;
+            return Task.FromResult("Sand.");
+        });
+        Assert.False(called);
+        Assert.Contains("keys:Enter", _desktop.Actions);
+    }
+
+    [Fact]
+    public async Task Second_model_is_ignored_outside_dictation()
+    {
+        var called = false;
+        await _controller.HandleTranscriptAsync("Hello there.", 0.9f, dictationTranscript: () =>
+        {
+            called = true;
+            return Task.FromResult("Namaste.");
+        });
+        Assert.False(called);
+        Assert.DoesNotContain(_desktop.Actions, a => a.StartsWith("type:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Second_model_types_the_tail_of_a_cut_sentence()
+    {
+        await StartTypingInCopilot();
+        await _controller.HandleTranscriptAsync("garbled", 0.9f, followsForcedCut: true, dictationTranscript: () => Task.FromResult("aur phir hum chalenge"));
+        Assert.Equal(["type:Aur phir hum chalenge"], _desktop.Actions.Select(a => a.Trim()).ToList());
+    }
+
     private async Task StartTypingInCopilot()
     {
         _desktop.Foreground = Copilot;

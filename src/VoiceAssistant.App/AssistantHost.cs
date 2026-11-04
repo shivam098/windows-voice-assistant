@@ -36,6 +36,11 @@ internal sealed class AssistantHost : IDisposable
     private readonly SoundFeedback _sounds;
     private readonly DictationFormatter _formatter;
     private WhisperRecognizer? _recognizer;
+    private volatile WhisperRecognizer? _hinglish;
+    private readonly object _hinglishGate = new();
+    private Task? _hinglishLoad;
+    private volatile bool _hinglishDictation;
+    private WhisperRecognizer? _captureRecognizer;
     private CancellationTokenSource? _previewCts;
     private Task? _previewTask;
     private SpeechDetector? _detector;
@@ -52,6 +57,7 @@ internal sealed class AssistantHost : IDisposable
     {
         _settings = settings;
         _ui = ui;
+        _hinglishDictation = persistMemory && File.Exists(AppPaths.HinglishDictationFlag);
         WindowsDesktop.InsertMethod = settings.InsertMethod;
         _sounds = new SoundFeedback(settings.SoundFeedback && persistMemory);
         if (settings.LearnFromUsage)
@@ -143,6 +149,12 @@ internal sealed class AssistantHost : IDisposable
 
     /// <summary>Raised on the UI thread with the live transcript while dictation records (null clears it).</summary>
     public event Action<string?>? DictationPreview;
+
+    /// <summary>Raised on the UI thread when dictation switches between English (false) and Hindi + English (true).</summary>
+    public event Action<bool>? DictationLanguageChanged;
+
+    /// <summary>True when dictation uses the Hindi + English model.</summary>
+    public bool HinglishDictation => _hinglishDictation;
 
     public InteractionMode Mode => _mode;
 
@@ -242,13 +254,28 @@ internal sealed class AssistantHost : IDisposable
         }
 
         _capturing = true;
+        _captureRecognizer = _recognizer;
+        if (_hinglishDictation)
+        {
+            if (_hinglish is not null)
+            {
+                _captureRecognizer = _hinglish;
+            }
+            else
+            {
+                EnsureHinglishLoading();
+                Report(StatusKind.Warning, "The Hindi + English model isn't ready yet; this dictation uses English.");
+            }
+        }
+
         _sounds.Play(SoundFeedback.Cue.StartTyping);
         PostActivity(label);
         if (_settings.LivePreview)
         {
             _previewCts = new CancellationTokenSource();
             var token = _previewCts.Token;
-            _previewTask = Task.Run(() => RunPreviewAsync(token));
+            var recognizer = _captureRecognizer;
+            _previewTask = Task.Run(() => RunPreviewAsync(recognizer, token));
         }
 
         return Task.CompletedTask;
@@ -296,7 +323,8 @@ internal sealed class AssistantHost : IDisposable
             return;
         }
 
-        if (audio.Length < SampleRate / 4 || _recognizer is null)
+        var recognizer = _captureRecognizer ?? _recognizer;
+        if (audio.Length < SampleRate / 4 || recognizer is null)
         {
             return;
         }
@@ -316,8 +344,8 @@ internal sealed class AssistantHost : IDisposable
             var parts = new List<string>();
             foreach (var chunk in chunks)
             {
-                var result = await _recognizer.TranscribeAsync(chunk, _shutdown.Token).ConfigureAwait(false);
-                Log.Info($"dictation chunk audio={chunk.Length * 1000 / SampleRate}ms asr={result.Elapsed.TotalMilliseconds:F0}ms");
+                var result = await recognizer.TranscribeAsync(chunk, _shutdown.Token).ConfigureAwait(false);
+                Log.Info($"dictation chunk audio={chunk.Length * 1000 / SampleRate}ms asr={result.Elapsed.TotalMilliseconds:F0}ms{(recognizer == _hinglish ? " model=hinglish" : string.Empty)}");
                 parts.Add(TranscriptText.Clean(result.Text));
             }
 
@@ -334,6 +362,44 @@ internal sealed class AssistantHost : IDisposable
         _controller.RepeatLastTranscript();
         return Task.CompletedTask;
     });
+
+    /// <summary>Switches dictation between English and Hindi + English (Alt+Shift+H). Takes effect from the next phrase.</summary>
+    public void ToggleDictationLanguage() => Enqueue(() =>
+    {
+        ApplyDictationLanguage(!_hinglishDictation);
+        return Task.CompletedTask;
+    });
+
+    /// <summary>Sets the dictation language (tray menu); does nothing if it is already that language.</summary>
+    public void SetDictationLanguage(bool hinglish) => Enqueue(() =>
+    {
+        if (hinglish != _hinglishDictation)
+        {
+            ApplyDictationLanguage(hinglish);
+        }
+
+        return Task.CompletedTask;
+    });
+
+    private void ApplyDictationLanguage(bool on)
+    {
+        _hinglishDictation = on;
+        StateFlags.Set(AppPaths.HinglishDictationFlag, on);
+        Log.Info($"dictation language: {(on ? "hinglish" : "english")}");
+        Post(() => DictationLanguageChanged?.Invoke(on));
+        if (!on)
+        {
+            Report(StatusKind.Info, "Dictation language: English.");
+        }
+        else if (_hinglish is not null)
+        {
+            Report(StatusKind.Info, "Dictation language: Hindi + English (Hindi is typed in Roman letters).");
+        }
+        else if (_recognizer is not null)
+        {
+            EnsureHinglishLoading();
+        }
+    }
 
     /// <summary>Forgets learned rephrasings and app usage, in memory and on disk.</summary>
     public void ForgetLearned() => Enqueue(() =>
@@ -405,12 +471,20 @@ internal sealed class AssistantHost : IDisposable
         }
 
         drained &= _previewTask?.Wait(TimeSpan.FromSeconds(5)) ?? true;
+        Task? hinglishLoad;
+        lock (_hinglishGate)
+        {
+            hinglishLoad = _hinglishLoad;
+        }
+
+        drained &= hinglishLoad?.Wait(TimeSpan.FromSeconds(5)) ?? true;
         StopMicrophone();
         _microphone.Dispose();
         _sounds.Dispose();
         if (drained)
         {
             _recognizer?.Dispose();
+            _hinglish?.Dispose();
             _detector?.Dispose();
         }
         else
@@ -465,7 +539,7 @@ internal sealed class AssistantHost : IDisposable
     /// Makes sure a model file exists, downloading and verifying it on first run (portable zips ship without
     /// models). Returns false if it is still missing.
     /// </summary>
-    private async Task<bool> EnsureModelAsync(string file)
+    private async Task<bool> EnsureModelAsync(string file, bool firstRun = true)
     {
         if (File.Exists(Path.Combine(AppPaths.ModelsDir, file)))
         {
@@ -479,22 +553,36 @@ internal sealed class AssistantHost : IDisposable
         }
 
         Log.Info($"downloading {file}");
-        Report(StatusKind.Info, "First run: downloading the speech model (one time, stays on this PC)…");
+        Report(StatusKind.Info, firstRun
+            ? "First run: downloading the speech model (one time, stays on this PC)…"
+            : "Downloading the Hindi + English model (about 80 MB, one time)…");
         try
         {
-            await ModelDownloader.DownloadAsync(file, AppPaths.ModelsDir, percent => PostActivity($"Downloading speech model… {percent}%"), _shutdown.Token).ConfigureAwait(false);
+            // Progress shows in the pill only on first run; later downloads must not replace a "Dictating…" label.
+            await ModelDownloader.DownloadAsync(file, AppPaths.ModelsDir, percent =>
+            {
+                if (firstRun)
+                {
+                    PostActivity($"Downloading speech model… {percent}%");
+                }
+            }, _shutdown.Token).ConfigureAwait(false);
             Log.Info($"downloaded {file}");
             return true;
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidDataException or TaskCanceledException or UnauthorizedAccessException)
         {
             Log.Error($"download of {file} failed: {ex.GetType().Name}");
-            Report(StatusKind.Error, "Couldn't download the speech model. Check the internet connection and restart Voice Assistant.");
+            Report(StatusKind.Error, firstRun
+                ? "Couldn't download the speech model. Check the internet connection and restart Voice Assistant."
+                : "Couldn't download the Hindi + English model. Check the internet connection and switch it on again.");
             return false;
         }
         finally
         {
-            PostActivity(null);
+            if (firstRun)
+            {
+                PostActivity(null);
+            }
         }
     }
 
@@ -543,6 +631,11 @@ internal sealed class AssistantHost : IDisposable
         }
 
         Log.Info($"models loaded in {(DateTime.UtcNow - started).TotalMilliseconds:F0} ms (vad={_detector is not null})");
+        if (_hinglishDictation)
+        {
+            EnsureHinglishLoading();
+        }
+
         if (_settings.ListenOnStartup)
         {
             StartListening();
@@ -550,6 +643,59 @@ internal sealed class AssistantHost : IDisposable
         else
         {
             Report(StatusKind.Info, $"Ready. Press {_settings.Hotkey} to start listening.");
+        }
+    }
+
+    /// <summary>Downloads (first time) and loads the Hindi + English model in the background, so commands keep working meanwhile.</summary>
+    private void EnsureHinglishLoading()
+    {
+        lock (_hinglishGate)
+        {
+            if (_hinglish is null && _hinglishLoad is null)
+            {
+                _hinglishLoad = Task.Run(LoadHinglishAsync);
+            }
+        }
+    }
+
+    private async Task LoadHinglishAsync()
+    {
+        try
+        {
+            if (!await EnsureModelAsync(_settings.HinglishModelFile, firstRun: false).ConfigureAwait(false))
+            {
+                return;
+            }
+
+            var started = DateTime.UtcNow;
+            var recognizer = new WhisperRecognizer(Path.Combine(AppPaths.ModelsDir, _settings.HinglishModelFile), new RecognizerOptions
+            {
+                Threads = _settings.Threads,
+                AudioContextSize = _settings.AudioContextSize,
+            });
+            await recognizer.TranscribeAsync(new float[SampleRate], _shutdown.Token).ConfigureAwait(false);
+            _hinglish = recognizer;
+            Log.Info($"hinglish model loaded in {(DateTime.UtcNow - started).TotalMilliseconds:F0} ms");
+            if (_hinglishDictation)
+            {
+                Report(StatusKind.Success, "Hindi + English dictation is ready (Hindi is typed in Roman letters).");
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Log.Error($"hinglish model load failed: {ex.GetType().Name}");
+            Report(StatusKind.Error, "Couldn't load the Hindi + English model. Delete it from the models folder and switch it on again.");
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            lock (_hinglishGate)
+            {
+                // Allow another attempt after a failure.
+                _hinglishLoad = null;
+            }
         }
     }
 
@@ -682,12 +828,21 @@ internal sealed class AssistantHost : IDisposable
             return;
         }
 
-        if (audioMs < 2500 && KnownHallucinations.Contains(TranscriptText.Normalize(result.Text)))
+        // While typing in Hindi + English, commands are still recognized in English; text to type comes from the Hindi model.
+        var hinglish = _hinglishDictation && _controller.Mode == InteractionMode.Dictation ? _hinglish : null;
+        if (hinglish is null && audioMs < 2500 && KnownHallucinations.Contains(TranscriptText.Normalize(result.Text)))
         {
             return;
         }
 
-        await _controller.HandleTranscriptAsync(result.Text, result.Probability, followsForcedCut, cancel.Token).ConfigureAwait(false);
+        Func<Task<string>>? dictation = hinglish is null ? null : async () =>
+        {
+            var typed = await hinglish.TranscribeAsync(samples, cancel.Token).ConfigureAwait(false);
+            Log.Info($"utterance hinglish asr={typed.Elapsed.TotalMilliseconds:F0}ms");
+            return audioMs < 2500 && KnownHallucinations.Contains(TranscriptText.Normalize(typed.Text)) ? string.Empty : typed.Text;
+        };
+
+        await _controller.HandleTranscriptAsync(result.Text, result.Probability, followsForcedCut, cancel.Token, dictation).ConfigureAwait(false);
     }
 
     private async Task ProcessQueueAsync()
@@ -722,9 +877,8 @@ internal sealed class AssistantHost : IDisposable
     private void Enqueue(Func<Task> work) => _queue.Writer.TryWrite(work);
 
     /// <summary>Re-transcribes the recording so far every <see cref="PreviewIntervalMs"/> and shows it live.</summary>
-    private async Task RunPreviewAsync(CancellationToken token)
+    private async Task RunPreviewAsync(WhisperRecognizer recognizer, CancellationToken token)
     {
-        var recognizer = _recognizer!;
         var detector = _detector;
         var preview = new DictationPreview(
             async audio =>

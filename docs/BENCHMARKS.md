@@ -53,6 +53,22 @@ Live microphone tests on this laptop found the v0.1 energy detector never saw th
 | v0.2 median-background VAD | 8/10 — dictation and “Scratch that” merged during loud music (would be typed) |
 | v0.2 + Silero split/drop | **10/10** at both levels; music-only audio dropped before Whisper |
 
+## Hindi + English
+
+Measured 2026-11-05 on the same laptop with the app's settings (8 threads, audio context 768, single segment, q8_0). Oriserve's models were converted with `tools/ModelConvert` from the official weights; on the sample clips from their model card the converted Swift model reproduces the card's outputs.
+
+Test sets: the 14 English clips above; 25 clips (≤14 s) of read Hindi from Google FLEURS (`hi_in` dev); 11 sample clips from Oriserve's model card (noisy calls and Common Voice, no references). FLEURS references are Devanagari while Oriserve writes Roman script, so Hindi is scored with an approximate **skeleton WER**: both scripts reduced to consonant skeletons per word (“uchchaaran” and “उच्चारण” → “ccrn”).
+
+| Model | Size | Median per phrase | English WER (exact) | Hindi skeleton WER | Hindi written as |
+|---|---|---|---|---|---|
+| small.en (default, commands) | 252 MB | 0.47 s | 2.3% (13/14) | 98.9% (no Hindi) | — |
+| **Oriserve Swift** (Hindi + English mode) | 78 MB | **0.22 s** | 8.0% (9/14) | 23.5% | Roman |
+| Oriserve Apex | 834 MB | 2.4 s | 10.2% (7/14) | 19.1% | Roman |
+| large-v3-turbo, auto language | 874 MB | 9.5 s | 0.0% (14/14) | 30.1% | Devanagari, sometimes Urdu script or another language |
+| large-v3-turbo, Hindi fixed | 874 MB | 3.0 s | 43.2% (6/14) | 18.2% | Devanagari |
+
+Swift was chosen for Hindi + English dictation: fastest, small, and it kept short commands such as “Send” intact (Apex heard “Sand”). Commands always use small.en. Caveats: the English clips are a synthetic US voice (Oriserve trained on ~550 h of Indian-accented speech), FLEURS is formal read Hindi rather than mixed speech, and skeleton WER is approximate.
+
 ## Desktop self-test (v0.2)
 
 `VoiceAssistant.exe --self-test` against the real apps on this machine:

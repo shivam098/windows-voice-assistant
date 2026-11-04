@@ -19,7 +19,7 @@ internal sealed class TrayIcon : IDisposable
     private readonly ToolStripMenuItem _startAtSignIn;
     private readonly string _hotkey;
 
-    public TrayIcon(AssistantHost host, string hotkey, OverlayWindow overlay, Action exit)
+    public TrayIcon(AssistantHost host, string hotkey, string languageHotkey, OverlayWindow overlay, Action exit)
     {
         _hotkey = hotkey;
         _icons[InteractionMode.Paused] = MakeIcon(Color.FromArgb(154, 160, 166));
@@ -31,13 +31,23 @@ internal sealed class TrayIcon : IDisposable
         _toggle = new ToolStripMenuItem($"Start listening\t{hotkey}", null, (_, _) => host.ToggleListening());
         _startAtSignIn = new ToolStripMenuItem("Start when I sign in", null, (_, _) => ToggleStartAtSignIn()) { Checked = IsStartAtSignIn() };
         var showPill = new ToolStripMenuItem("Always show status pill", null, (_, _) => overlay.Minimized = !overlay.Minimized);
+        var english = new ToolStripMenuItem("English", null, (_, _) => host.SetDictationLanguage(hinglish: false));
+        var hinglish = new ToolStripMenuItem($"Hindi + English (typed in Roman letters)\t{languageHotkey}", null, (_, _) => host.SetDictationLanguage(hinglish: true));
+        var language = new ToolStripMenuItem("Dictation language");
+        language.DropDownItems.AddRange([english, hinglish]);
 
         var menu = new ContextMenuStrip();
-        menu.Opening += (_, _) => showPill.Checked = !overlay.Minimized;
+        menu.Opening += (_, _) =>
+        {
+            showPill.Checked = !overlay.Minimized;
+            english.Checked = !host.HinglishDictation;
+            hinglish.Checked = host.HinglishDictation;
+        };
         menu.Items.Add(_status);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_toggle);
         menu.Items.Add(new ToolStripMenuItem("Paste last dictation\tAlt+Shift+Z", null, (_, _) => host.PasteLastTranscript()));
+        menu.Items.Add(language);
         menu.Items.Add(new ToolStripMenuItem("Copy text that wasn't typed", null, (_, _) => host.CopyUntypedText()));
         menu.Items.Add(new ToolStripMenuItem("Voice commands…", null, (_, _) => ShowCommands()));
         menu.Items.Add(new ToolStripSeparator());
@@ -128,6 +138,8 @@ internal sealed class TrayIcon : IDisposable
           “…scratch that…” drops the phrase before it.
           Click “–” on the status pill to hide it until it's needed
           (tray menu › Always show status pill brings it back).
+          Alt+Shift+H → dictate in Hindi + English (typed in Roman letters);
+          press again for English. Commands stay in English.
 
         VOICE COMMANDS — start with “Hey Jarvis” (then 8 s without it)
           “Hey Jarvis, open Notepad”  ·  “…open Chrome”  ·  “…open GitHub Copilot”

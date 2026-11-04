@@ -49,6 +49,7 @@ Put the cursor in any text box, then:
 | **`Ctrl`+`Win`+`Space`** | Hands-free dictation; press again to insert |
 | **`Esc`** while recording | Cancel |
 | **`Alt`+`Shift`+`Z`** | Paste the last dictation again |
+| **`Alt`+`Shift`+`H`** | Switch dictation between English and **Hindi + English** (see below) |
 
 Dictation is cleaned up automatically:
 
@@ -58,6 +59,14 @@ Dictation is cleaned up automatically:
 - **Personal dictionary**: `replacements` fixes words and names you use (“git hub” → “GitHub”, “shivum” → “Shivam”).
 - **Snippets**: say a trigger (or “insert *trigger*”) to type saved text, e.g. a signature.
 - Text is **pasted** (reliable in every app). It is kept out of Clipboard History and cloud clipboard, and your previous clipboard is restored.
+
+### Hindi + English (Hinglish)
+
+Press **`Alt`+`Shift`+`H`** (or tray menu › *Dictation language* › *Hindi + English*) to dictate in Hindi, English, or a mix of both. Hindi is typed in Roman letters (“kal meeting reschedule kar do”), the way most people type Hinglish. A **HI + EN** badge on the pill shows it's on; press again for English.
+
+- Uses [Oriserve's Whisper-Hindi2Hinglish-Swift](https://huggingface.co/Oriserve/Whisper-Hindi2Hinglish-Swift) model (Apache-2.0, see [third-party notices](docs/THIRD-PARTY-NOTICES.md)), still fully on this PC. It downloads once (~80 MB, SHA-256 verified) the first time you switch it on.
+- Voice commands (“Hey Jarvis…”, “send”, “stop typing”) keep using the English model, so they work the same in both modes.
+- English accuracy is lower in this mode (it misheard “pull request” as “poll request” in testing), so switch back for English-only writing. See [BENCHMARKS.md](docs/BENCHMARKS.md#hindi--english).
 
 ## 2. Voice control — “Hey Jarvis”
 
@@ -125,6 +134,8 @@ Speak naturally — polite padding is understood: *“Hey Jarvis, can you open N
 | `pushToTalk` | `true` | `Ctrl+Win` dictation keys |
 | `livePreview` | `true` | Show words in the overlay while `Ctrl+Win` dictation records (re-transcribes every ~0.6 s; uses extra CPU while recording) |
 | `pasteLastHotkey` | `Alt+Shift+Z` | |
+| `dictationLanguageHotkey` | `Alt+Shift+H` | Switch dictation between English and Hindi + English |
+| `hinglishModelFile` | `ggml-hinglish-swift-q8_0.bin` | Hindi + English dictation model (downloaded on first use) |
 | `insertMethod` | `Paste` | `Type` sends keystrokes instead (some apps drop characters) |
 | `removeFillerWords` / `spokenPunctuation` | `true` | Dictation clean-up |
 | `replacements` | git hub → GitHub, … | Whole-word fixes |
@@ -140,6 +151,7 @@ Speak naturally — polite padding is understood: *“Hey Jarvis, can you open N
 ```text
 Microphone ─┬─ (Ctrl+Win held) ─────────────► capture ─► Silero chunks ─► Whisper ─► format ─► paste at cursor
             │                                   └─► live preview (Whisper every ~0.6 s) ─► overlay
+            │                      (Whisper = small.en, or the Hindi + English model when switched on)
             └─ UtteranceSegmenter (pauses) ─► Silero (drop noise, split) ─► Whisper ─► CommandParser
                                                                                     ─► InteractionController
                                                                                     ─► Win32 + UI Automation
@@ -152,6 +164,7 @@ Microphone ─┬─ (Ctrl+Win held) ─────────────► 
 | `src/VoiceAssistant.App` | Tray app, overlay, microphone, key hook, clipboard paste, UI Automation |
 | `tests/VoiceAssistant.Core.Tests` | xUnit tests |
 | `tools/SpeechBench` | Benchmarks, live microphone diagnostics, noisy-room replay |
+| `tools/ModelConvert` | Converts Hugging Face Whisper checkpoints to ggml (how the Hindi + English model is built) |
 
 ## Develop
 
@@ -171,7 +184,7 @@ Regenerate the logo with `powershell -File assets\make-logo.ps1`. See the **[ste
 
 ## Known limitations
 
-- English only. A headset works best in noisy rooms.
+- English, plus Hindi + English dictation (Alt+Shift+H); voice commands are English only. A headset works best in noisy rooms.
 - Inline “scratch that” is rule-based: it removes the phrase before it, not a single corrected word (“meet at 2, scratch that, 3” keeps only “3”). Wispr's AI rewrites, tones/styles, and command-mode editing need a language model and aren't included.
 - Voice dictation inserts text after each pause (~1 s), not word by word. Push-to-talk inserts when you release the keys.
 - `Ctrl+Win` combinations used by Windows (e.g. `Ctrl+Win+D`) still work; the recording is discarded.
