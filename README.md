@@ -163,7 +163,7 @@ dotnet run --project tools/SpeechBench -c Release -r win-arm64 -- --live 30     
 dotnet run --project tools/SpeechBench -c Release -r win-arm64 -- --mix noise.wav -22  # commands over room noise
 ```
 
-Regenerate the logo with `powershell -File assets\make-logo.ps1`. See [docs/BENCHMARKS.md](docs/BENCHMARKS.md), [docs/PRD.md](docs/PRD.md), and [docs/TECHNICAL-SPEC.md](docs/TECHNICAL-SPEC.md).
+Regenerate the logo with `powershell -File assets\make-logo.ps1`. See the **[step-by-step guide](docs/GUIDE.md)** (install, use, share, develop, contribute), [docs/BENCHMARKS.md](docs/BENCHMARKS.md), [docs/PRD.md](docs/PRD.md), and [docs/TECHNICAL-SPEC.md](docs/TECHNICAL-SPEC.md).
 
 ## Known limitations
 
