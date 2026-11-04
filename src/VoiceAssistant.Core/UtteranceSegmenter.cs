@@ -6,8 +6,14 @@ public sealed record SegmenterOptions
 
     public int FrameMs { get; init; } = 30;
 
-    /// <summary>Silence that ends an utterance. Commands must be separated from dictation by at least this pause.</summary>
+    /// <summary>Pause that ends an utterance. Commands must be separated from dictation by at least this pause.</summary>
     public int EndSilenceMs { get; init; } = 600;
+
+    /// <summary>
+    /// Fraction of frames in the trailing <see cref="EndSilenceMs"/> window that must be quiet to end an utterance.
+    /// Below 1.0 so a burst of background music or a click during the pause doesn't keep the utterance open.
+    /// </summary>
+    public double EndQuietFraction { get; init; } = 0.8;
 
     public int PreRollMs { get; init; } = 300;
 
@@ -19,11 +25,17 @@ public sealed record SegmenterOptions
     /// <summary>Consecutive loud frames required to start an utterance.</summary>
     public int StartFrames { get; init; } = 3;
 
-    /// <summary>Speech must exceed the adaptive noise floor by this much.</summary>
-    public double StartAboveFloorDb { get; init; } = 12;
+    /// <summary>Recent non-speech audio used to estimate the background level.</summary>
+    public int BackgroundWindowMs { get; init; } = 5000;
+
+    /// <summary>Speech must exceed the background level by this much to start an utterance.</summary>
+    public double StartAboveBackgroundDb { get; init; } = 10;
+
+    /// <summary>Frames this far above the background count as speech while an utterance is open.</summary>
+    public double ContinueAboveBackgroundDb { get; init; } = 6;
 
     /// <summary>Absolute minimum level for speech, so near-silent rooms do not trigger on hiss.</summary>
-    public double MinSpeechDbfs { get; init; } = -48;
+    public double MinSpeechDbfs { get; init; } = -55;
 }
 
 /// <param name="Samples">16 kHz mono audio.</param>
@@ -35,29 +47,45 @@ public sealed record Utterance(float[] Samples, bool FollowsForcedCut);
 
 /// <summary>
 /// Energy-based voice activity detector that splits a 16 kHz mono stream into pause-delimited utterances.
-/// Not thread-safe: feed from a single capture thread.
+/// The background level is the median of recent non-speech frames, which stays meaningful with fans,
+/// music, or meeting audio in the room (a minimum-tracking floor sits far below such noise and makes
+/// every pause look like speech). Not thread-safe: feed from a single capture thread.
 /// </summary>
 public sealed class UtteranceSegmenter
 {
+    private const double DefaultBackgroundDb = -60;
+    private const int WarmUpFrames = 10;
+    private const double SteadySoundRangeDb = 12;
+
     private readonly SegmenterOptions _o;
     private readonly int _frameSamples;
     private readonly float[] _frame;
     private readonly Queue<float[]> _preRoll = new();
     private readonly List<float> _utterance = [];
+    private readonly List<double> _utteranceLevels = [];
+    private readonly double[] _background;
+    private readonly double[] _sortScratch;
+    private readonly bool[] _endWindow;
+    private int _backgroundCount;
+    private int _backgroundNext;
+    private double _backgroundDb = DefaultBackgroundDb;
+    private int _endWindowNext;
+    private int _endWindowQuiet;
     private int _frameFill;
     private bool _inSpeech;
     private bool _afterForcedCut;
     private int _quietFrames;
     private int _loudRun;
-    private int _silentFrames;
     private int _speechFrames;
-    private double _noiseFloorDb = -60;
 
     public UtteranceSegmenter(SegmenterOptions? options = null)
     {
         _o = options ?? new SegmenterOptions();
         _frameSamples = _o.SampleRate * _o.FrameMs / 1000;
         _frame = new float[_frameSamples];
+        _background = new double[Math.Max(1, _o.BackgroundWindowMs / _o.FrameMs)];
+        _sortScratch = new double[_background.Length];
+        _endWindow = new bool[Math.Max(1, _o.EndSilenceMs / _o.FrameMs)];
     }
 
     public event Action<Utterance>? UtteranceReady;
@@ -66,19 +94,22 @@ public sealed class UtteranceSegmenter
 
     public bool InSpeech => _inSpeech;
 
-    public double NoiseFloorDb => _noiseFloorDb;
+    /// <summary>Current background (noise) level estimate in dBFS.</summary>
+    public double NoiseFloorDb => _backgroundDb;
 
+    /// <summary>Clears any in-progress utterance. The background estimate is kept: it describes the room, not the utterance.</summary>
     public void Reset()
     {
         _preRoll.Clear();
         _utterance.Clear();
+        _utteranceLevels.Clear();
         _frameFill = 0;
         _inSpeech = false;
         _afterForcedCut = false;
         _quietFrames = 0;
         _loudRun = 0;
-        _silentFrames = 0;
         _speechFrames = 0;
+        ClearEndWindow();
     }
 
     public void Push(ReadOnlySpan<float> samples)
@@ -123,8 +154,8 @@ public sealed class UtteranceSegmenter
     private void ProcessFrame(float[] frame)
     {
         var db = LevelDbfs(frame);
-        var startThreshold = Math.Max(_noiseFloorDb + _o.StartAboveFloorDb, _o.MinSpeechDbfs);
-        var continueThreshold = Math.Max(_noiseFloorDb + _o.StartAboveFloorDb / 2, _o.MinSpeechDbfs - 6);
+        var startThreshold = Math.Max(_backgroundDb + _o.StartAboveBackgroundDb, _o.MinSpeechDbfs);
+        var continueThreshold = Math.Max(_backgroundDb + _o.ContinueAboveBackgroundDb, _o.MinSpeechDbfs - 4);
 
         if (!_inSpeech)
         {
@@ -134,77 +165,134 @@ public sealed class UtteranceSegmenter
                 _preRoll.Dequeue();
             }
 
+            // Learn the room for the first ~300 ms before allowing speech, so a loud room isn't one long utterance.
+            if (_backgroundCount < WarmUpFrames)
+            {
+                AddBackground(db);
+                return;
+            }
+
             if (db >= startThreshold)
             {
                 _loudRun++;
                 if (_loudRun >= _o.StartFrames)
                 {
-                    _inSpeech = true;
-                    _silentFrames = 0;
-                    _speechFrames = _loudRun;
-                    foreach (var f in _preRoll)
-                    {
-                        _utterance.AddRange(f);
-                    }
-
-                    _preRoll.Clear();
-                    SpeechStarted?.Invoke();
+                    StartUtterance();
                 }
+
+                return;
             }
-            else
-            {
-                _loudRun = 0;
-                // Track the floor quickly downward and slowly upward so speech does not raise it.
-                var rate = db < _noiseFloorDb ? 0.2 : 0.02;
-                _noiseFloorDb += (db - _noiseFloorDb) * rate;
 
+            _loudRun = 0;
+            AddBackground(db);
+            if (_afterForcedCut && ++_quietFrames * _o.FrameMs >= _o.EndSilenceMs)
+            {
                 // A real pause after a length-capped cut means the next phrase is a fresh utterance again.
-                if (_afterForcedCut && ++_quietFrames * _o.FrameMs >= _o.EndSilenceMs)
-                {
-                    _afterForcedCut = false;
-                }
+                _afterForcedCut = false;
             }
 
             return;
         }
 
         _utterance.AddRange(frame);
-        if (db >= continueThreshold)
+        _utteranceLevels.Add(db);
+        var quiet = db < continueThreshold;
+        if (!quiet)
         {
-            _silentFrames = 0;
             _speechFrames++;
         }
-        else
-        {
-            _silentFrames++;
-        }
 
+        PushEndWindow(quiet);
+        var windowFull = _utteranceLevels.Count >= _endWindow.Length;
         var durationMs = _utterance.Count * 1000 / _o.SampleRate;
-        if (_silentFrames * _o.FrameMs >= _o.EndSilenceMs)
+        if (windowFull && _endWindowQuiet >= Math.Ceiling(_endWindow.Length * _o.EndQuietFraction))
         {
             Emit(forcedCut: false);
         }
         else if (durationMs >= _o.MaxUtteranceMs)
         {
+            // No pause for the whole cap: either a long sentence or steady background (fan, hum) that is louder
+            // than the estimate. Steady sound has little dynamic range; speech has syllables and gaps. Only for
+            // steady sound, adopt its level as background so it stops looking like endless speech.
+            var sorted = _utteranceLevels.Order().ToList();
+            var p10 = sorted[sorted.Count / 10];
+            var p90 = sorted[sorted.Count * 9 / 10];
+            if (p90 - p10 < SteadySoundRangeDb)
+            {
+                var level = sorted[sorted.Count / 2];
+                for (var i = 0; i <= _background.Length / 2; i++)
+                {
+                    AddBackground(level);
+                }
+            }
+
             Emit(forcedCut: true);
         }
+    }
+
+    private void StartUtterance()
+    {
+        _inSpeech = true;
+        _speechFrames = _loudRun;
+        ClearEndWindow();
+        foreach (var f in _preRoll)
+        {
+            _utterance.AddRange(f);
+        }
+
+        _preRoll.Clear();
+        SpeechStarted?.Invoke();
     }
 
     private void Emit(bool forcedCut)
     {
         var enoughSpeech = _speechFrames * _o.FrameMs >= _o.MinSpeechMs;
         var utterance = new Utterance(_utterance.ToArray(), _afterForcedCut);
-        // Silence already at the end of a capped utterance counts toward the pause that clears the flag.
-        _afterForcedCut = forcedCut && _silentFrames * _o.FrameMs < _o.EndSilenceMs;
-        _quietFrames = _silentFrames;
+        // Quiet frames already at the end of a capped utterance count toward the pause that clears the flag.
+        _afterForcedCut = forcedCut && _endWindowQuiet * _o.FrameMs < _o.EndSilenceMs;
+        _quietFrames = _endWindowQuiet;
         _utterance.Clear();
+        _utteranceLevels.Clear();
         _inSpeech = false;
         _loudRun = 0;
-        _silentFrames = 0;
         _speechFrames = 0;
+        ClearEndWindow();
         if (enoughSpeech)
         {
             UtteranceReady?.Invoke(utterance);
         }
+    }
+
+    private void AddBackground(double db)
+    {
+        _background[_backgroundNext] = db;
+        _backgroundNext = (_backgroundNext + 1) % _background.Length;
+        _backgroundCount = Math.Min(_backgroundCount + 1, _background.Length);
+        Array.Copy(_background, _sortScratch, _backgroundCount);
+        Array.Sort(_sortScratch, 0, _backgroundCount);
+        _backgroundDb = _sortScratch[_backgroundCount / 2];
+    }
+
+    private void PushEndWindow(bool quiet)
+    {
+        if (_endWindow[_endWindowNext])
+        {
+            _endWindowQuiet--;
+        }
+
+        _endWindow[_endWindowNext] = quiet;
+        if (quiet)
+        {
+            _endWindowQuiet++;
+        }
+
+        _endWindowNext = (_endWindowNext + 1) % _endWindow.Length;
+    }
+
+    private void ClearEndWindow()
+    {
+        Array.Clear(_endWindow);
+        _endWindowNext = 0;
+        _endWindowQuiet = 0;
     }
 }

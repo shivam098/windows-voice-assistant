@@ -1,10 +1,10 @@
+<p align="center"><img src="assets/logo.png" width="96" alt="Voice Assistant logo"></p>
+
 # Windows Voice Assistant
 
-Hands-free voice control for Windows: open an app, dictate into it, and send — without touching the keyboard.
+Talk to your Windows PC: dictate into any app like [Wispr Flow](https://wisprflow.ai), and control apps hands-free with “Hey Jarvis”.
 
-> “Open GitHub Copilot” → “Start typing” → *speak your message* → *pause* → “Send”
-
-Everything runs **on this PC**. Speech is transcribed locally with [whisper.cpp](https://github.com/ggerganov/whisper.cpp) (via [Whisper.net](https://github.com/sandrohanea/whisper.net)); audio and transcripts are never written to disk or sent anywhere.
+Everything runs **on this PC**. Speech is transcribed locally with [whisper.cpp](https://github.com/ggerganov/whisper.cpp) (via [Whisper.net](https://github.com/sandrohanea/whisper.net)) and filtered with the Silero voice-activity model; audio and transcripts are never written to disk or sent anywhere.
 
 ## Install
 
@@ -16,7 +16,7 @@ cd windows-voice-assistant
 powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
 ```
 
-The installer builds a self-contained app, downloads the speech model once (SHA-256 verified), installs to `%LOCALAPPDATA%\Programs\VoiceAssistant`, adds a **Voice Assistant** Start menu shortcut, and starts it. Look for the microphone icon in the system tray.
+The installer builds a self-contained app, downloads the speech and voice-activity models once (SHA-256 verified), installs to `%LOCALAPPDATA%\Programs\VoiceAssistant`, adds a **Voice Assistant** Start menu shortcut, and starts it. Look for the purple microphone in the system tray and the status pill at the bottom of the screen.
 
 | Option | Effect |
 |---|---|
@@ -26,46 +26,74 @@ The installer builds a self-contained app, downloads the speech model once (SHA-
 
 Uninstall: `.\scripts\uninstall.ps1` (add `-RemoveData` to delete models, settings, and logs).
 
-## Use it
+## 1. Dictate anywhere (Wispr-style)
 
-A small pill at the bottom of the screen shows what the assistant is doing:
+Put the cursor in any text box, then:
 
-| Pill | Meaning |
+| Do | Result |
 |---|---|
-| 🔵 Listening for a command | Only the commands below do anything; other speech is ignored |
-| 🔴 Typing | Everything you say is typed into the window you started typing in |
-| ⚪ Paused | Microphone is off |
+| **Hold `Ctrl`+`Win`**, speak, release | Your words are inserted at the cursor |
+| **`Ctrl`+`Win`+`Space`** | Hands-free dictation; press again to insert |
+| **`Esc`** while recording | Cancel |
+| **`Alt`+`Shift`+`Z`** | Paste the last dictation again |
 
-**Commands (blue):**
+Dictation is cleaned up automatically:
+
+- **Filler words** (“um”, “uh”, “hmm”) are removed.
+- **Spoken punctuation**: “comma”, “question mark”, “exclamation mark”, “colon”, “new line”, “new paragraph”, and “period” at the end.
+- **Inline correction**: “…call John, scratch that, email Sarah” keeps only what follows “scratch that” (it drops the phrase just before it).
+- **Personal dictionary**: `replacements` fixes words and names you use (“git hub” → “GitHub”, “shivum” → “Shivam”).
+- **Snippets**: say a trigger (or “insert *trigger*”) to type saved text, e.g. a signature.
+- Text is **pasted** (reliable in every app). It is kept out of Clipboard History and cloud clipboard, and your previous clipboard is restored.
+
+## 2. Voice control — “Hey Jarvis”
+
+The assistant waits for **“Hey Jarvis”**; other speech is ignored silently. After the wake word, commands work without it for 8 seconds (each command extends this).
 
 | Say | Does |
 |---|---|
-| “Open GitHub Copilot” / “Switch to Notepad” / “Open Outlook” | Opens or brings the app to the front (any Start menu app works) |
-| “Open GitHub Copilot and start typing” | Both in one go |
-| “Start typing” | Types into the focused window. In GitHub Copilot it finds the message box for you |
+| “Hey Jarvis, open Notepad” / “…open Chrome” / “…open GitHub Copilot” | Opens or switches to the app (any Start menu app works) |
+| “Start typing” | Starts dictation in the app’s text area — Notepad’s document, Copilot’s message box, or whatever is focused |
+| “Hey Jarvis, open Notepad and start typing” | Both at once |
+| “Go to the search box” | Browsers: the address/search bar. Other apps: the box labelled “search”. Then dictate your query |
+| “Go to the address bar” | Browsers |
+| “Search for weather in Bangalore” | Focuses search, types, presses Enter |
+| “New tab”, “Close tab”, “Go back”, “Refresh”, “Scroll down” | Browser/app shortcuts |
+| “Copy”, “Paste”, “Cut”, “Undo”, “Redo”, “Select all”, “Save” | Editing shortcuts |
+| “Press enter / tab / escape / up / down / page down …” | Any of those keys |
 | “Pause listening” | Turns the microphone off |
 
-**While typing (red)** — *pause briefly before each command*:
+**While typing** (red pill), everything you say is typed. Pause briefly, then say a command on its own:
 
 | Say | Does |
 |---|---|
-| “Send” / “Send it” / “Submit” | Presses the app’s send key (Enter in GitHub Copilot), then returns to commands |
-| “Scratch that” | Deletes the last phrase you dictated |
-| “Clear box” | Clears the whole message box |
+| “Send” / “Search” / “Submit” | Presses the app’s send key (Enter), then back to commands |
+| “Scratch that” | Deletes the last phrase |
+| “Clear box” | Clears the text box |
 | “New line” / “New paragraph” | Line break without sending |
+| “Press tab” (any key) | Presses it |
 | “Stop typing” | Back to commands; nothing is sent |
 
-Commands must be spoken **on their own, after a short pause**. “Please send me the logs” is typed as text; a standalone “Send.” sends. If that’s ever ambiguous, prefix with **“Computer, …”** (e.g. “Computer, send”), or set `requireCommandPrefixWhileTyping` to `true` so only prefixed phrases count as commands.
+“Please send me the logs” is typed; a standalone “Send.” sends. Start with “Hey Jarvis, …” to force a command while typing.
 
-**Keyboard/mouse fallback:** `Ctrl+Alt+Space` or a left-click on the tray icon toggles listening. The tray menu has “Voice commands…”, settings, and “Copy text that wasn't typed”.
+**Example flows**
 
-## Safety behaviour
+```text
+"Hey Jarvis, open Notepad"  →  "Start typing"  →  "Dear team comma …"  →  "Stop typing"
+"Hey Jarvis, open Chrome"   →  "New tab"  →  "Go to the search box"  →  "weather in Bangalore"  →  "Search"
+"Hey Jarvis, open GitHub Copilot and start typing"  →  "Fix the failing test"  →  "Send"
+```
 
-- **Bound to one window.** Dictation goes only to the window where you said “start typing”. If focus moves elsewhere, nothing is typed or sent; the text is kept in memory and can be copied from the tray menu.
-- **Refuses** password fields and windows running as administrator.
-- **Whole-utterance commands only** — no substring matching, so a sentence containing “send” never sends.
-- **Low-confidence commands are ignored** rather than executed.
-- Runs unelevated (`asInvoker`). Logs (`%LOCALAPPDATA%\VoiceAssistant\logs`, kept 7 days) contain only states and timings — never words.
+**Status pill:** light blue = waiting for “Hey Jarvis”, blue = listening for a command, red = typing/dictating, grey = paused. `Ctrl+Alt+Space` or a left-click on the tray icon pauses/resumes listening; push-to-talk works even while paused.
+
+## Safety and privacy
+
+- **Bound to one window.** Voice dictation goes only to the window where you said “start typing”. If focus moves, nothing is typed or sent; the text is kept in memory (tray → *Copy text that wasn't typed*).
+- **Refuses** password fields and windows running as administrator. Voice dictation also refuses fields it can't verify; push-to-talk (an explicit key press) allows them.
+- **Whole-utterance commands only**: a sentence containing “send” never sends. Low-confidence commands are ignored.
+- **Music and noise are dropped** by Silero before transcription; long speech while waiting for a command (meetings) is skipped.
+- Runs unelevated. Logs (`%LOCALAPPDATA%\VoiceAssistant\logs`, kept 7 days) contain only states and timings — never words.
+- No speaker identification: anyone near the microphone can say “Hey Jarvis”. Pause listening in meetings.
 
 ## Settings
 
@@ -73,50 +101,56 @@ Commands must be spoken **on their own, after a short pause**. “Please send me
 
 | Setting | Default | |
 |---|---|---|
-| `modelFile` | `ggml-small.en-q8_0.bin` | Must exist in `%LOCALAPPDATA%\VoiceAssistant\models` |
-| `endSilenceMs` | `600` | Pause that ends a phrase. Raise if commands trigger mid-thought |
-| `maxCommandUtteranceMs` | `6000` | While waiting for a command, longer speech (conversation, meeting audio) is skipped without transcribing |
-| `hotkey` | `Ctrl+Alt+Space` | Toggle listening |
-| `microphoneDevice` | `-1` | Windows default recording device |
-| `listenOnStartup` | `true` | Start listening as soon as the app loads |
-| `requireCommandPrefixWhileTyping` | `false` | Only “Computer, …” phrases are commands while typing |
-| `returnToCommandModeAfterSend` | `true` | Stop typing after “send” |
-| `minCommandConfidence` | `0.3` | Ignore commands Whisper is unsure about |
-| `apps` | GitHub Copilot, Notepad | Per-app launch target, process name, `submitKeys`, `newLineKeys`, `focusComposer` |
+| `wakeWordEnabled` / `wakeWords` / `awakeSeconds` | `true` / “hey jarvis”… / `8` | Wake word behaviour |
+| `pushToTalk` | `true` | `Ctrl+Win` dictation keys |
+| `pasteLastHotkey` | `Alt+Shift+Z` | |
+| `insertMethod` | `Paste` | `Type` sends keystrokes instead (some apps drop characters) |
+| `removeFillerWords` / `spokenPunctuation` | `true` | Dictation clean-up |
+| `replacements` | git hub → GitHub, … | Whole-word fixes |
+| `snippets` | `{}` | e.g. `{ "my signature": "Thanks,\nShivam" }` |
+| `modelFile` | `ggml-small.en-q8_0.bin` | In `%LOCALAPPDATA%\VoiceAssistant\models` |
+| `endSilenceMs` | `600` | Pause that ends a phrase |
+| `maxCommandUtteranceMs` | `6000` | Longer speech while waiting for a command is skipped |
+| `hotkey` | `Ctrl+Alt+Space` | Pause/resume listening |
+| `apps` | Copilot, Notepad, Chrome, Edge, Firefox | Per-app launch, `submitKeys`, `newLineKeys`, `textArea` (`Bottom`/`Largest`), `textAreaName`, `searchKeys` |
 
 ## How it works
 
 ```text
-Microphone (16 kHz) ─► UtteranceSegmenter (energy VAD, pause = end of phrase)
-                     ─► WhisperRecognizer (local, ~0.5 s/phrase)
-                     ─► CommandParser (whole-utterance match)
-                     ─► InteractionController (command / typing state machine, window binding)
-                     ─► WindowsDesktop (window activation, UI Automation, SendInput)
+Microphone ─┬─ (Ctrl+Win held) ─────────────► capture ─► Silero chunks ─► Whisper ─► format ─► paste at cursor
+            └─ UtteranceSegmenter (pauses) ─► Silero (drop noise, split) ─► Whisper ─► CommandParser
+                                                                                    ─► InteractionController
+                                                                                    ─► Win32 + UI Automation
 ```
 
 | Project | Purpose |
 |---|---|
-| `src/VoiceAssistant.Core` | Platform-independent logic: parser, app catalog, segmenter, controller (fully unit-tested) |
-| `src/VoiceAssistant.Speech` | Whisper.net wrapper |
-| `src/VoiceAssistant.App` | WPF tray app, overlay, microphone, Win32/UI Automation |
+| `src/VoiceAssistant.Core` | Parser, wake word, formatter, segmenter, controller — platform-independent, unit-tested |
+| `src/VoiceAssistant.Speech` | Whisper and Silero wrappers |
+| `src/VoiceAssistant.App` | Tray app, overlay, microphone, key hook, clipboard paste, UI Automation |
 | `tests/VoiceAssistant.Core.Tests` | xUnit tests |
-| `tools/SpeechBench` | Speech latency/accuracy benchmark and end-to-end pipeline check |
+| `tools/SpeechBench` | Benchmarks, live microphone diagnostics, noisy-room replay |
 
 ## Develop
 
 ```powershell
 dotnet test tests/VoiceAssistant.Core.Tests
 dotnet build src/VoiceAssistant.App -r win-arm64        # or win-x64
-dotnet run --project tools/SpeechBench -c Release -r win-arm64 -- --pipeline
+
+# Desktop self-test: runs scripted transcripts against real apps (no microphone)
+src\VoiceAssistant.App\bin\Debug\net10.0-windows\win-arm64\VoiceAssistant.exe --self-test script.txt out.txt
+
+# Speech tools
+dotnet run --project tools/SpeechBench -c Release -r win-arm64 -- --live 30            # live mic diagnostics
+dotnet run --project tools/SpeechBench -c Release -r win-arm64 -- --mix noise.wav -22  # commands over room noise
 ```
 
-See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for measured numbers, [docs/PRD.md](docs/PRD.md) and [docs/TECHNICAL-SPEC.md](docs/TECHNICAL-SPEC.md) for the product plan.
+Regenerate the logo with `powershell -File assets\make-logo.ps1`. See [docs/BENCHMARKS.md](docs/BENCHMARKS.md), [docs/PRD.md](docs/PRD.md), and [docs/TECHNICAL-SPEC.md](docs/TECHNICAL-SPEC.md).
 
-## Known limitations (v0.1)
+## Known limitations
 
-- English only. Accuracy depends on your microphone; a headset works best.
-- Each phrase is transcribed after you pause, so text appears ~1 s after you stop speaking (not word-by-word).
-- Whisper capitalises and punctuates each phrase, so pausing mid-sentence can produce “I want to. Build an app.”
-- No speaker identification: anyone near the microphone can issue commands. Pause listening in meetings.
+- English only. A headset works best in noisy rooms.
+- Inline “scratch that” is rule-based: it removes the phrase before it, not a single corrected word (“meet at 2, scratch that, 3” keeps only “3”). Wispr's AI rewrites, tones/styles, and command-mode editing need a language model and aren't included.
+- Voice dictation inserts text after each pause (~1 s), not word by word. Push-to-talk inserts when you release the keys.
+- `Ctrl+Win` combinations used by Windows (e.g. `Ctrl+Win+D`) still work; the recording is discarded.
 - Plain “Copilot” opens the Start menu app named *Copilot* (Microsoft Copilot). Say “GitHub Copilot”.
-- Typing into Remote Desktop works when the RDP window is focused, but the message-box finder only works for local apps.

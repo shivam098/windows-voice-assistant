@@ -40,3 +40,24 @@ An audio context of 768 tokens (15.36 s) is ~3× faster than the default 30 s wi
 ## Installed app
 
 Cold start to listening: ~2.3 s (model load 0.95 s). Resident memory with `small.en-q8_0`: ~510 MB.
+
+## Noisy room (v0.2)
+
+Live microphone tests on this laptop found the v0.1 energy detector never saw the pauses: room noise and music sat around −50 dBFS while its noise floor tracked the quietest moments (−60 to −63 dBFS), so “Open GitHub Copilot” became an 8.6 s utterance merged with whatever followed (“not a command I know”).
+
+`SpeechBench --mix` overlays the clean clips onto 45 s of the real recorded room noise (with music) at −22 and −32 dBFS, ~1 s apart:
+
+| Version | Utterances routed correctly (10 scripted) |
+|---|---|
+| v0.1 energy VAD | 1/10 — commands merged into 7–14 s chunks |
+| v0.2 median-background VAD | 8/10 — dictation and “Scratch that” merged during loud music (would be typed) |
+| v0.2 + Silero split/drop | **10/10** at both levels; music-only audio dropped before Whisper |
+
+## Desktop self-test (v0.2)
+
+`VoiceAssistant.exe --self-test` against the real apps on this machine:
+
+- Notepad: wake word → open → new tab → start typing → dictation with filler, “comma”, “scratch that”, “new line”, “question mark” → exact expected text; clipboard fingerprint identical before and after.
+- Chrome: new tab → “go to the search box” → “weather in Bangalore” → “search” → Google results page.
+- GitHub Copilot: “start typing” focuses the empty **Message** box (not the side-panel editor).
+- Synthesized Unicode keystrokes into Windows 11 Notepad intermittently dropped or garbled characters at every pacing tried; pasting was exact, so `Paste` is the default insert method.

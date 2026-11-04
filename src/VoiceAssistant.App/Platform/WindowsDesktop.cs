@@ -101,6 +101,11 @@ internal sealed class WindowsDesktop : IDesktop
 
     public FieldCheck CheckFocusedField()
     {
+        if (GetForegroundWindow() is { } foreground && Win32.IsProcessElevated(foreground.ProcessId) == true)
+        {
+            return FieldCheck.Elevated;
+        }
+
         try
         {
             var check = Task.Run(() => Check(Focused()));
@@ -112,9 +117,54 @@ internal sealed class WindowsDesktop : IDesktop
         }
     }
 
-    public void TypeText(string text) => KeyboardInput.TypeUnicode(text.Replace("\r\n", " ").Replace('\n', ' '));
+    public bool? FocusedTextEndsWithNonWhitespace()
+    {
+        try
+        {
+            var check = Task.Run(() => HasTrailingText(Focused()));
+            return check.Wait(600) ? check.Result : null;
+        }
+        catch (AggregateException)
+        {
+            return null;
+        }
+    }
 
-    public void PressKeys(string chord) => KeyboardInput.PressChord(chord);
+    public async Task<TextTargetResult> FocusSearchBoxAsync(WindowRef window, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await Task.Run(() => FocusSearchBox(window), cancellationToken).WaitAsync(UiaTimeout, cancellationToken).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            Log.Warn("uia search box timed out");
+            return new TextTargetResult(false, "That app isn't responding. Try again in a moment.");
+        }
+    }
+
+    /// <summary>"Paste" (reliable in every editor, Wispr-style) or "Type" (synthesized keystrokes).</summary>
+    public static string InsertMethod { get; set; } = "Paste";
+
+    public void TypeText(string text)
+    {
+        text = text.Replace("\r\n", " ").Replace('\n', ' ');
+        KeyboardInput.WaitForModifiersReleased();
+        if (string.Equals(InsertMethod, "Paste", StringComparison.OrdinalIgnoreCase))
+        {
+            ClipboardPaste.Paste(text);
+        }
+        else
+        {
+            KeyboardInput.TypeUnicode(text);
+        }
+    }
+
+    public void PressKeys(string chord)
+    {
+        KeyboardInput.WaitForModifiersReleased();
+        KeyboardInput.PressChord(chord);
+    }
 
     public void Backspace(int count)
     {
@@ -124,38 +174,91 @@ internal sealed class WindowsDesktop : IDesktop
         }
     }
 
+    private static TextTargetResult FocusSearchBox(WindowRef window)
+    {
+        var box = FindSearchBox(window.Handle);
+        if (box is null)
+        {
+            Thread.Sleep(400);
+            box = FindSearchBox(window.Handle);
+        }
+
+        var name = string.IsNullOrWhiteSpace(window.Title) ? window.ProcessName : window.Title;
+        if (box is null)
+        {
+            return new TextTargetResult(false, $"I couldn't find a search box in {name}.");
+        }
+
+        try
+        {
+            box.SetFocus();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ElementNotAvailableException)
+        {
+            Log.Warn($"search focus failed: {ex.GetType().Name}");
+        }
+
+        Thread.Sleep(150);
+        return IsEditable(Focused())
+            ? new TextTargetResult(true, string.Empty)
+            : new TextTargetResult(false, $"I couldn't focus the search box in {name}. Click it once, then say “start typing”.");
+    }
+
+    /// <summary>Visible edit/combo box whose name, id, or help text mentions "search"; the top-most one wins.</summary>
+    private static AutomationElement? FindSearchBox(nint hwnd)
+    {
+        try
+        {
+            return EditableCandidates(hwnd, includeCombo: true)
+                .Where(x => SafeGet(() =>
+                {
+                    var c = x.Element.Current;
+                    return $"{c.Name} {c.AutomationId} {c.HelpText}".Contains("search", StringComparison.OrdinalIgnoreCase);
+                }))
+                .OrderBy(x => x.Rect.Top)
+                .Select(x => x.Element)
+                .FirstOrDefault();
+        }
+        catch (Exception ex) when (ex is ElementNotAvailableException or InvalidOperationException or ArgumentException)
+        {
+            Log.Warn($"search box lookup failed: {ex.GetType().Name}");
+            return null;
+        }
+    }
+
     private static TextTargetResult PrepareTextTarget(WindowRef window, AppEntry? profile)
     {
         var focused = Focused();
-        if (profile?.FocusComposer == true && !IsEditable(focused))
+        var wrongBox = profile?.TextAreaName is { } wanted && !MatchesName(focused, wanted);
+        if (profile?.TextArea is { } strategy && (!IsEditable(focused) || wrongBox))
         {
-            var composer = FindComposer(window.Handle);
-            if (composer is null)
+            var area = FindTextArea(window.Handle, strategy, profile.TextAreaName);
+            if (area is null)
             {
                 // Chromium builds its accessibility tree on first request; give it a moment.
                 Thread.Sleep(400);
-                composer = FindComposer(window.Handle);
+                area = FindTextArea(window.Handle, strategy, profile.TextAreaName);
             }
 
-            if (composer is null)
+            if (area is null)
             {
-                return new TextTargetResult(false, $"I couldn't find the message box in {profile.Name}. Click it once, then say “start typing”.");
+                return new TextTargetResult(false, $"I couldn't find where to type in {profile.Name}. Click it once, then say “start typing”.");
             }
 
             try
             {
-                composer.SetFocus();
+                area.SetFocus();
             }
             catch (Exception ex) when (ex is InvalidOperationException or ElementNotAvailableException)
             {
-                Log.Warn($"composer focus failed: {ex.GetType().Name}");
+                Log.Warn($"text area focus failed: {ex.GetType().Name}");
             }
 
             Thread.Sleep(150);
             focused = Focused();
-            if (!IsEditable(focused))
+            if (!IsEditable(focused) || (profile.TextAreaName is { } name && !MatchesName(focused, name)))
             {
-                return new TextTargetResult(false, $"I couldn't focus the message box in {profile.Name}. Click it once, then say “start typing”.");
+                return new TextTargetResult(false, $"I couldn't focus the text area in {profile.Name}. Click it once, then say “start typing”.");
             }
         }
 
@@ -214,37 +317,79 @@ internal sealed class WindowsDesktop : IDesktop
                 return true;
             }
 
-            return current.ControlType == ControlType.Document &&
-                   element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern) &&
-                   !((ValuePattern)pattern).Current.IsReadOnly;
+            if (current.ControlType != ControlType.Document && current.ControlType != ControlType.ComboBox)
+            {
+                return false;
+            }
+
+            if (element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
+            {
+                return !((ValuePattern)pattern).Current.IsReadOnly;
+            }
+
+            // Rich editors (e.g. Notepad) expose TextPattern without ValuePattern.
+            return current.ControlType == ControlType.Document && current.IsKeyboardFocusable &&
+                   element.TryGetCurrentPattern(TextPattern.Pattern, out _);
         });
     }
 
-    /// <summary>Chat apps put the message box at the bottom: pick the lowest visible, enabled, focusable edit control.</summary>
-    private static AutomationElement? FindComposer(nint hwnd)
+    /// <summary>
+    /// "Bottom": chat apps put the message box at the bottom, so pick the lowest editable control.
+    /// "Largest": document editors, so pick the biggest one. A name narrows the candidates first.
+    /// </summary>
+    private static AutomationElement? FindTextArea(nint hwnd, string strategy, string? name)
     {
         try
         {
-            var root = AutomationElement.FromHandle(hwnd);
-            var condition = new AndCondition(
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit),
-                new PropertyCondition(AutomationElement.IsEnabledProperty, true),
-                new PropertyCondition(AutomationElement.IsKeyboardFocusableProperty, true),
-                new PropertyCondition(AutomationElement.IsOffscreenProperty, false),
-                new PropertyCondition(AutomationElement.IsPasswordProperty, false));
-            return root.FindAll(TreeScope.Descendants, condition)
-                .Cast<AutomationElement>()
-                .Select(e => (Element: e, Rect: SafeGet(() => e.Current.BoundingRectangle)))
-                .Where(x => !x.Rect.IsEmpty && x.Rect.Width >= 120)
-                .OrderByDescending(x => x.Rect.Bottom)
-                .Select(x => x.Element)
-                .FirstOrDefault();
+            var candidates = EditableCandidates(hwnd, includeCombo: false).Where(x => x.Rect.Width >= 120);
+            if (name is not null)
+            {
+                candidates = candidates.Where(x => MatchesName(x.Element, name));
+            }
+
+            var ordered = string.Equals(strategy, "Largest", StringComparison.OrdinalIgnoreCase)
+                ? candidates.OrderByDescending(x => x.Rect.Width * x.Rect.Height)
+                : candidates.OrderByDescending(x => x.Rect.Bottom);
+            return ordered.Select(x => x.Element).FirstOrDefault();
         }
         catch (Exception ex) when (ex is ElementNotAvailableException or InvalidOperationException or ArgumentException)
         {
-            Log.Warn($"composer search failed: {ex.GetType().Name}");
+            Log.Warn($"text area search failed: {ex.GetType().Name}");
             return null;
         }
+    }
+
+    private static bool MatchesName(AutomationElement? element, string name) =>
+        element is not null && SafeGet(() =>
+        {
+            var c = element.Current;
+            return string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase) ||
+                   c.HelpText.Contains(name, StringComparison.OrdinalIgnoreCase);
+        });
+
+    private static IEnumerable<(AutomationElement Element, System.Windows.Rect Rect)> EditableCandidates(nint hwnd, bool includeCombo)
+    {
+        var root = AutomationElement.FromHandle(hwnd);
+        Condition types = includeCombo
+            ? new OrCondition(
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit),
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Document),
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ComboBox))
+            : new OrCondition(
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit),
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Document));
+        var condition = new AndCondition(
+            types,
+            new PropertyCondition(AutomationElement.IsEnabledProperty, true),
+            new PropertyCondition(AutomationElement.IsKeyboardFocusableProperty, true),
+            new PropertyCondition(AutomationElement.IsOffscreenProperty, false),
+            new PropertyCondition(AutomationElement.IsPasswordProperty, false));
+        return root.FindAll(TreeScope.Descendants, condition)
+            .Cast<AutomationElement>()
+            .Where(IsEditable)
+            .Select(e => (Element: e, Rect: SafeGet(() => e.Current.BoundingRectangle)))
+            .Where(x => !x.Rect.IsEmpty)
+            .ToList();
     }
 
     private static bool? HasTrailingText(AutomationElement? element)

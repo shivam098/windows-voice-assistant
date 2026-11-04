@@ -13,8 +13,10 @@ public class InteractionControllerTests
         Launch = "copilot",
         ProcessNames = ["github"],
         WindowTitleContains = "GitHub Copilot",
-        FocusComposer = true,
+        TextArea = "Bottom",
     };
+
+    private static readonly ControllerOptions NoWake = new() { WakeWordEnabled = false };
 
     private static readonly AppEntry NotepadApp = new()
     {
@@ -32,7 +34,7 @@ public class InteractionControllerTests
     public InteractionControllerTests()
     {
         _desktop.OpenResults["GitHub Copilot"] = Copilot;
-        _controller = new InteractionController(_desktop, new AppCatalog([CopilotApp, NotepadApp]), new CommandParser());
+        _controller = new InteractionController(_desktop, new AppCatalog([CopilotApp, NotepadApp]), new CommandParser(), NoWake);
         _controller.Status += _statuses.Add;
         _controller.SetListening(true);
     }
@@ -50,7 +52,7 @@ public class InteractionControllerTests
         await Say("Send.");
 
         Assert.Equal(
-            ["open:GitHub Copilot", "prepare:github:True", "type:Fix the failing test.", "type: And add a regression check.", "keys:Enter"],
+            ["open:GitHub Copilot", "prepare:github:Bottom", "type:Fix the failing test.", "type: And add a regression check.", "keys:Enter"],
             _desktop.Actions);
         Assert.Equal(InteractionMode.Command, _controller.Mode);
     }
@@ -249,7 +251,7 @@ public class InteractionControllerTests
     {
         var catalog = new AppCatalog([CopilotApp]);
         catalog.SetDiscoveredApps([new AppEntry { Name = "Outlook", Launch = "outlook" }]);
-        var controller = new InteractionController(_desktop, catalog, new CommandParser());
+        var controller = new InteractionController(_desktop, catalog, new CommandParser(), NoWake);
         controller.SetListening(true);
         _desktop.Foreground = Other;
         _desktop.UnconfirmedOpen = true;
@@ -274,12 +276,12 @@ public class InteractionControllerTests
     }
 
     [Fact]
-    public async Task Continuation_in_command_mode_is_ignored()
+    public async Task Continuation_outside_typing_is_parsed_normally()
     {
+        // Only dictation needs protecting from a sentence tail; a stuck flag must not swallow commands.
         _desktop.Foreground = Copilot;
         await Say("Start typing.", continuation: true);
-        Assert.Empty(_desktop.Actions);
-        Assert.Equal(InteractionMode.Command, _controller.Mode);
+        Assert.Equal(InteractionMode.Dictation, _controller.Mode);
     }
 
     [Fact]
@@ -341,11 +343,23 @@ public class InteractionControllerTests
 
         public Task<TextTargetResult> PrepareTextTargetAsync(WindowRef window, AppEntry? profile, CancellationToken cancellationToken)
         {
-            Actions.Add($"prepare:{window.ProcessName}:{profile?.FocusComposer == true}");
+            Actions.Add($"prepare:{window.ProcessName}:{profile?.TextArea ?? "none"}");
             return Task.FromResult(new TextTargetResult(PrepareSucceeds, PrepareSucceeds ? string.Empty : "no box", TrailingText));
         }
 
         public FieldCheck CheckFocusedField() => Field;
+
+        public bool? TrailingNonWhitespace { get; set; }
+
+        public bool SearchBoxFound { get; set; } = true;
+
+        public bool? FocusedTextEndsWithNonWhitespace() => TrailingNonWhitespace;
+
+        public Task<TextTargetResult> FocusSearchBoxAsync(WindowRef window, CancellationToken cancellationToken)
+        {
+            Actions.Add($"searchbox:{window.ProcessName}");
+            return Task.FromResult(new TextTargetResult(SearchBoxFound, SearchBoxFound ? string.Empty : "no search box"));
+        }
 
         public void TypeText(string text) => Actions.Add($"type:{text}");
 

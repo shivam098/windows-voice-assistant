@@ -37,6 +37,8 @@ $ModelHashes = @{
     'ggml-base.en-q8_0.bin'  = 'a4d4a0768075e13cfd7e19df3ae2dbc4a68d37d36a7dad45e8410c9a34f8c87e'
     'ggml-base.en.bin'       = 'a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002'
 }
+# https://huggingface.co/api/models/ggml-org/whisper-vad/tree/main
+$VadHash = '2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987'
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $Project = Join-Path $RepoRoot 'src\VoiceAssistant.App\VoiceAssistant.App.csproj'
@@ -88,23 +90,27 @@ function Get-DotNet {
 
 function Install-Model {
     New-Item -ItemType Directory -Force $ModelsDir | Out-Null
-    $target = Join-Path $ModelsDir $Model
-    $expected = $ModelHashes[$Model]
-    if ((Test-Path $target) -and (Get-FileHash $target -Algorithm SHA256).Hash -eq $expected) {
-        Write-Step "Speech model $Model already present and verified"
+    Install-VerifiedFile "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/$Model" (Join-Path $ModelsDir $Model) $ModelHashes[$Model] "speech model $Model"
+    # Silero voice-activity model: tells speech from music/noise and splits phrases that background sound merged.
+    Install-VerifiedFile 'https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin' (Join-Path $ModelsDir 'ggml-silero-v6.2.0.bin') $VadHash 'voice-activity model'
+}
+
+function Install-VerifiedFile([string] $Url, [string] $Target, [string] $Expected, [string] $Label) {
+    if ((Test-Path $Target) -and (Get-FileHash $Target -Algorithm SHA256).Hash -eq $Expected) {
+        Write-Step "$Label already present and verified"
         return
     }
 
-    Write-Step "Downloading speech model $Model (one time)"
-    $partial = "$target.partial"
-    Invoke-WebRequest "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/$Model" -OutFile $partial -UseBasicParsing
+    Write-Step "Downloading $Label (one time)"
+    $partial = "$Target.partial"
+    Invoke-WebRequest $Url -OutFile $partial -UseBasicParsing
     $actual = (Get-FileHash $partial -Algorithm SHA256).Hash
-    if ($actual -ne $expected) {
+    if ($actual -ne $Expected) {
         Remove-Item $partial -Force
-        throw "Model hash mismatch for $Model (expected $expected, got $actual). Download discarded."
+        throw "Hash mismatch for $Label (expected $Expected, got $actual). Download discarded."
     }
 
-    Move-Item -Force $partial $target
+    Move-Item -Force $partial $Target
 }
 
 function Set-ModelSetting {
@@ -156,7 +162,8 @@ $shell = New-Object -ComObject WScript.Shell
 $link = $shell.CreateShortcut($Shortcut)
 $link.TargetPath = $Exe
 $link.WorkingDirectory = $InstallDir
-$link.Description = 'Hands-free voice control: open apps, dictate, and send.'
+$link.IconLocation = "$Exe,0"
+$link.Description = 'Hands-free voice control and dictation: open apps, dictate, and send.'
 $link.Save()
 
 $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
@@ -171,6 +178,7 @@ if (-not $NoLaunch) {
 }
 
 Write-Host ''
-Write-Host 'Installed. Look for the microphone icon in the system tray.' -ForegroundColor Green
-Write-Host '  Try:  "Open GitHub Copilot"  ->  "Start typing"  ->  speak  ->  pause  ->  "Send"'
+Write-Host 'Installed. Look for the purple microphone icon in the system tray.' -ForegroundColor Green
+Write-Host '  Dictate anywhere: hold Ctrl+Win, speak, release (Ctrl+Win+Space = hands-free)'
+Write-Host '  Voice commands:   "Hey Jarvis, open Notepad" -> "Start typing" -> speak -> "Stop typing"'
 Write-Host '  Pause or resume listening: Ctrl+Alt+Space (or click the tray icon)'

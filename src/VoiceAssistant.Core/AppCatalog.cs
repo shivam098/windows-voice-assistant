@@ -20,8 +20,23 @@ public sealed record AppEntry
 
     public string NewLineKeys { get; init; } = "Shift+Enter";
 
-    /// <summary>When true, "start typing" searches the window for its message box if focus is elsewhere.</summary>
-    public bool FocusComposer { get; init; }
+    /// <summary>
+    /// How “start typing” finds the text area when focus is elsewhere: "Bottom" (chat message box at the
+    /// bottom of the window) or "Largest" (document editor). Null: type wherever focus already is.
+    /// </summary>
+    public string? TextArea { get; init; }
+
+    /// <summary>
+    /// Accessible name (or help-text fragment) identifying the right text area when the window has several,
+    /// e.g. GitHub Copilot's "Message" box versus its side-panel editor. Focus elsewhere is moved to it.
+    /// </summary>
+    public string? TextAreaName { get; init; }
+
+    /// <summary>Keys that focus the app's search box (browsers: "Ctrl+L" for the address/search bar).</summary>
+    public string? SearchKeys { get; init; }
+
+    /// <summary>Keys that focus the address bar (browsers).</summary>
+    public string? AddressBarKeys { get; init; }
 }
 
 public abstract record AppResolution

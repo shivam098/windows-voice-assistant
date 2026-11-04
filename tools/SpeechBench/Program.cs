@@ -10,6 +10,25 @@ if (args.Length > 0 && args[0] == "--pipeline")
     return;
 }
 
+if (args.Length > 0 && args[0] == "--live")
+{
+    await LiveDiagnostics.RunAsync(int.Parse(args.Length > 1 ? args[1] : "30"), "ggml-small.en-q8_0.bin", args.Length > 2 ? args[2] : null);
+    return;
+}
+
+if (args.Length > 1 && args[0] == "--replay")
+{
+    await LiveDiagnostics.ReplayAsync(args[1], args.Length > 2 ? args[2] : "ggml-small.en-q8_0.bin");
+    return;
+}
+
+// --mix <noise.wav> [speechDbfs]: overlay clean clips onto recorded room noise and replay.
+if (args.Length > 1 && args[0] == "--mix")
+{
+    await LiveDiagnostics.MixAsync(args[1], DefaultAudioDir(), args.Length > 2 ? double.Parse(args[2]) : -22, "ggml-small.en-q8_0.bin");
+    return;
+}
+
 var modelsDir = args.Length > 0 ? args[0] : DefaultModelsDir();
 var audioDir = args.Length > 1 ? args[1] : DefaultAudioDir();
 var models = args.Length > 2 ? args[2..] : Directory.GetFiles(modelsDir, "*.bin").Select(f => Path.GetFileName(f)).ToArray();

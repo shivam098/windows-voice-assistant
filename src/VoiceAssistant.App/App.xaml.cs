@@ -12,11 +12,29 @@ public partial class App : System.Windows.Application
     private AssistantHost? _host;
     private TrayIcon? _tray;
     private GlobalHotkey? _hotkey;
+    private GlobalHotkey? _pasteHotkey;
+    private DictationKeyHook? _keyHook;
     private OverlayWindow? _overlay;
+    private DictationState _dictation;
+
+    private enum DictationState
+    {
+        None,
+        Holding,
+        HandsFree,
+    }
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        if (e.Args.Length >= 2 && e.Args[0] == "--self-test")
+        {
+            Log.Initialize();
+            _ = SelfTest.RunAsync(e.Args[1], e.Args.Length > 2 ? e.Args[2] : e.Args[1] + ".out.txt", Dispatcher)
+                .ContinueWith(_ => Dispatcher.BeginInvoke(() => Shutdown()), TaskScheduler.Default);
+            return;
+        }
+
         _singleInstance = new Mutex(false, @"Local\VoiceAssistant.SingleInstance");
         try
         {
@@ -29,7 +47,7 @@ public partial class App : System.Windows.Application
 
         if (!_ownsMutex)
         {
-            System.Windows.MessageBox.Show("Voice Assistant is already running — look for the microphone icon in the system tray.", "Voice Assistant");
+            System.Windows.MessageBox.Show("Voice Assistant is already running — look for its icon in the system tray.", "Voice Assistant");
             Shutdown();
             return;
         }
@@ -51,17 +69,11 @@ public partial class App : System.Windows.Application
         };
         _host.Activity += (mode, activity) => _overlay.ShowMode(mode, activity);
 
-        try
+        _hotkey = TryRegister(settings.Hotkey, _host.ToggleListening, "pause/resume");
+        _pasteHotkey = TryRegister(settings.PasteLastHotkey, _host.PasteLastTranscript, "paste last dictation");
+        if (settings.PushToTalk)
         {
-            _hotkey = new GlobalHotkey(settings.Hotkey, _host.ToggleListening);
-            if (!_hotkey.IsRegistered)
-            {
-                _tray.ShowBalloon($"{settings.Hotkey} is used by another app. Use the tray icon to pause or resume.");
-            }
-        }
-        catch (ArgumentException ex)
-        {
-            _tray.ShowBalloon(ex.Message);
+            InstallDictationKeys();
         }
 
         _host.Start();
@@ -70,7 +82,9 @@ public partial class App : System.Windows.Application
     protected override void OnExit(ExitEventArgs e)
     {
         Log.Info("exiting");
+        _keyHook?.Dispose();
         _hotkey?.Dispose();
+        _pasteHotkey?.Dispose();
         _host?.Dispose();
         _tray?.Dispose();
         if (_ownsMutex)
@@ -80,6 +94,95 @@ public partial class App : System.Windows.Application
 
         _singleInstance?.Dispose();
         base.OnExit(e);
+    }
+
+    /// <summary>Wispr-style keys: hold Ctrl+Win to talk, Ctrl+Win+Space for hands-free, Esc to cancel.</summary>
+    private void InstallDictationKeys()
+    {
+        _keyHook = new DictationKeyHook(Dispatcher);
+        if (!_keyHook.IsInstalled)
+        {
+            _tray?.ShowBalloon("Couldn't install the Ctrl+Win dictation keys.");
+            return;
+        }
+
+        void Begin(DictationState state, string label)
+        {
+            _dictation = state;
+            _keyHook.IsRecording = true;
+            _host!.BeginDictationCapture(label);
+        }
+
+        void End(bool cancel)
+        {
+            _dictation = DictationState.None;
+            _keyHook.IsRecording = false;
+            _host!.EndDictationCapture(cancel);
+        }
+
+        _keyHook.HoldStarted += () =>
+        {
+            if (_dictation == DictationState.None)
+            {
+                Begin(DictationState.Holding, "Dictating… release Ctrl+Win to type");
+            }
+        };
+        _keyHook.HoldEnded += () =>
+        {
+            if (_dictation == DictationState.Holding)
+            {
+                End(cancel: false);
+            }
+        };
+        _keyHook.HoldAborted += () =>
+        {
+            if (_dictation == DictationState.Holding)
+            {
+                End(cancel: true);
+            }
+        };
+        _keyHook.HandsFreeToggled += () =>
+        {
+            switch (_dictation)
+            {
+                case DictationState.Holding:
+                    _dictation = DictationState.HandsFree;
+                    _host!.BeginDictationCapture("Dictating hands-free… Ctrl+Win+Space to finish");
+                    break;
+                case DictationState.HandsFree:
+                    End(cancel: false);
+                    break;
+                default:
+                    Begin(DictationState.HandsFree, "Dictating hands-free… Ctrl+Win+Space to finish");
+                    break;
+            }
+        };
+        _keyHook.CancelPressed += () =>
+        {
+            if (_dictation != DictationState.None)
+            {
+                End(cancel: true);
+            }
+        };
+    }
+
+    private GlobalHotkey? TryRegister(string chord, Action action, string purpose)
+    {
+        try
+        {
+            var hotkey = new GlobalHotkey(chord, action);
+            if (!hotkey.IsRegistered)
+            {
+                _tray?.ShowBalloon($"{chord} ({purpose}) is used by another app.");
+            }
+
+            return hotkey;
+        }
+        catch (ArgumentException ex)
+        {
+            _tray?.ShowBalloon(ex.Message);
+            return null;
+        }
     }
 
     private void OnUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

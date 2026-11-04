@@ -18,29 +18,44 @@ public sealed record ControllerOptions
 
     /// <summary>Commands below this average token probability are ignored rather than executed or typed.</summary>
     public float MinCommandConfidence { get; init; } = 0.3f;
+
+    /// <summary>When true, listening starts in <see cref="InteractionMode.Standby"/> and commands need the wake word.</summary>
+    public bool WakeWordEnabled { get; init; } = true;
+
+    /// <summary>How long commands work without repeating the wake word.</summary>
+    public TimeSpan AwakeTimeout { get; init; } = TimeSpan.FromSeconds(8);
+
+    public string WakeWordLabel { get; init; } = "Hey Jarvis";
+
+    public Func<DateTime> Clock { get; init; } = () => DateTime.UtcNow;
 }
 
 /// <summary>
-/// Owns the command/dictation state machine. Not thread-safe: callers must invoke it from one serial queue.
+/// Owns the standby/command/dictation state machine. Not thread-safe: callers must invoke it from one serial queue.
 /// </summary>
 public sealed class InteractionController
 {
     private readonly IDesktop _desktop;
     private readonly AppCatalog _apps;
     private readonly CommandParser _parser;
+    private readonly DictationFormatter _formatter;
     private readonly ControllerOptions _options;
     private readonly Stack<int> _segments = new();
     private WindowRef? _target;
     private AppEntry? _targetProfile;
     private bool _boxHadText;
     private bool _needsLeadingSpace;
+    private bool _endsSentence = true;
+    private bool _searchField;
+    private DateTime _awakeSince;
 
-    public InteractionController(IDesktop desktop, AppCatalog apps, CommandParser parser, ControllerOptions? options = null)
+    public InteractionController(IDesktop desktop, AppCatalog apps, CommandParser parser, ControllerOptions? options = null, DictationFormatter? formatter = null)
     {
         _desktop = desktop;
         _apps = apps;
         _parser = parser;
         _options = options ?? new ControllerOptions();
+        _formatter = formatter ?? new DictationFormatter();
     }
 
     public event Action<StatusUpdate>? Status;
@@ -50,10 +65,15 @@ public sealed class InteractionController
 
     public InteractionMode Mode { get; private set; } = InteractionMode.Paused;
 
-    /// <summary>Dictated text that could not be typed because focus moved. Kept only in memory.</summary>
+    /// <summary>Dictated text that could not be typed (focus moved, unverifiable field). Kept only in memory.</summary>
     public string? UntypedText { get; private set; }
 
+    /// <summary>The last text typed by dictation, for “paste last transcript”. Kept only in memory.</summary>
+    public string? LastTranscript { get; private set; }
+
     public WindowRef? Target => _target;
+
+    private string IdleMode => _options.WakeWordEnabled ? $"Say “{_options.WakeWordLabel}” to give a command." : "Listening for a command.";
 
     public void SetListening(bool listening)
     {
@@ -61,8 +81,8 @@ public sealed class InteractionController
         {
             if (Mode == InteractionMode.Paused)
             {
-                Mode = InteractionMode.Command;
-                Report(StatusKind.Info, "Listening. Say “open GitHub Copilot” or “start typing”.");
+                Mode = _options.WakeWordEnabled ? InteractionMode.Standby : InteractionMode.Command;
+                Report(StatusKind.Info, IdleMode);
             }
 
             return;
@@ -77,6 +97,15 @@ public sealed class InteractionController
 
     public void ClearUntypedText() => UntypedText = null;
 
+    /// <summary>Call periodically: returns to standby when the wake word's command window has expired.</summary>
+    public void Tick()
+    {
+        if (ExpireAwake())
+        {
+            Report(StatusKind.Info, IdleMode);
+        }
+    }
+
     /// <param name="followsForcedCut">
     /// The audio continues a sentence that was cut at the length cap, so it is typed (or ignored) but never run as a command.
     /// </param>
@@ -87,12 +116,14 @@ public sealed class InteractionController
             return;
         }
 
+        ExpireAwake();
         var heard = TranscriptText.Clean(transcript);
-        if (followsForcedCut)
+        if (followsForcedCut && Mode == InteractionMode.Dictation)
         {
-            if (Mode == InteractionMode.Dictation && heard.Length > 0)
+            // The tail of a sentence cut at the length cap: type it, never treat it as "send"/"stop typing".
+            if (heard.Length > 0)
             {
-                Type(heard, heard);
+                TypeDictated(heard, heard);
             }
 
             return;
@@ -104,22 +135,43 @@ public sealed class InteractionController
             return;
         }
 
-        if (parsed.Commands.Count > 0 && confidence < _options.MinCommandConfidence)
+        if ((parsed.Commands.Count > 0 || parsed.IsWakeOnly) && confidence < _options.MinCommandConfidence)
         {
             Report(StatusKind.Warning, "Not sure I heard that right — ignored.", heard);
             return;
         }
 
+        if (parsed.IsWakeOnly)
+        {
+            if (Mode != InteractionMode.Dictation)
+            {
+                Awake();
+                Report(StatusKind.Info, "Yes? Say a command.", heard);
+            }
+
+            return;
+        }
+
         if (parsed.Unrecognized is not null)
         {
+            if (Mode == InteractionMode.Standby)
+            {
+                Awake();
+            }
+
             Report(StatusKind.Warning, "Not a command I know.", heard);
             return;
         }
 
         if (parsed.DictationText is not null)
         {
-            Type(parsed.DictationText, heard);
+            TypeDictated(parsed.DictationText, heard);
             return;
+        }
+
+        if (Mode == InteractionMode.Standby)
+        {
+            Awake();
         }
 
         foreach (var command in parsed.Commands)
@@ -130,6 +182,39 @@ public sealed class InteractionController
                 break;
             }
         }
+
+        if (Mode == InteractionMode.Command)
+        {
+            _awakeSince = _options.Clock();
+        }
+    }
+
+    /// <summary>
+    /// Push-to-talk / hands-free dictation: formats the transcript and types it wherever the cursor is.
+    /// The user's explicit key press is the consent, so only password and administrator windows are refused.
+    /// </summary>
+    public void InsertDictation(string transcript)
+    {
+        var formatted = _formatter.Format(transcript);
+        if (formatted.Length == 0)
+        {
+            Report(StatusKind.Info, "I didn't catch anything to type.");
+            return;
+        }
+
+        InsertIntoFocused(formatted, TranscriptText.Clean(transcript));
+    }
+
+    /// <summary>Types the last dictated text again into the focused field.</summary>
+    public void RepeatLastTranscript()
+    {
+        if (string.IsNullOrEmpty(LastTranscript))
+        {
+            Report(StatusKind.Info, "There's no previous dictation yet.");
+            return;
+        }
+
+        InsertIntoFocused(LastTranscript, null);
     }
 
     private async Task<bool> ExecuteAsync(VoiceCommand command, string heard, CancellationToken ct)
@@ -142,8 +227,30 @@ public sealed class InteractionController
             case CommandKind.StartTyping:
                 return await StartTypingAsync(heard, ct).ConfigureAwait(false);
 
+            case CommandKind.FocusSearch:
+                return await FocusSearchAsync(heard, addressBar: false, ct).ConfigureAwait(false);
+
+            case CommandKind.FocusAddressBar:
+                return await FocusSearchAsync(heard, addressBar: true, ct).ConfigureAwait(false);
+
+            case CommandKind.SearchFor:
+                if (!await FocusSearchAsync(heard, addressBar: false, ct).ConfigureAwait(false))
+                {
+                    return false;
+                }
+
+                if (!TypeDictated(command.Argument ?? string.Empty, heard))
+                {
+                    return false;
+                }
+
+                return Send(heard, "Searching.");
+
+            case CommandKind.PressKeys:
+                return PressKeys(command.Argument ?? string.Empty, heard);
+
             case CommandKind.Send:
-                return Send(heard);
+                return Send(heard, "Sent.");
 
             case CommandKind.ScratchThat:
                 if (!EnsureTargetFocused(heard, null))
@@ -173,7 +280,8 @@ public sealed class InteractionController
                 _segments.Clear();
                 _boxHadText = false;
                 _needsLeadingSpace = false;
-                Report(StatusKind.Success, "Cleared the message box.", heard);
+                _endsSentence = true;
+                Report(StatusKind.Success, "Cleared.", heard);
                 return true;
 
             case CommandKind.NewLine:
@@ -186,18 +294,19 @@ public sealed class InteractionController
                 var lines = command.Kind == CommandKind.NewLine ? 1 : 2;
                 for (var i = 0; i < lines; i++)
                 {
-                    _desktop.PressKeys(_targetProfile?.NewLineKeys ?? "Shift+Enter");
+                    _desktop.PressKeys(NewLineKeys);
                 }
 
                 _segments.Push(lines);
                 _needsLeadingSpace = false;
+                _endsSentence = true;
                 Report(StatusKind.Success, lines == 1 ? "New line." : "New paragraph.", heard);
                 return true;
 
             case CommandKind.StopTyping:
                 if (Mode == InteractionMode.Dictation)
                 {
-                    Mode = InteractionMode.Command;
+                    Awake();
                     Report(StatusKind.Info, "Stopped typing. Nothing was sent.", heard);
                 }
 
@@ -213,6 +322,8 @@ public sealed class InteractionController
                 return false;
         }
     }
+
+    private string NewLineKeys => _targetProfile?.NewLineKeys ?? "Shift+Enter";
 
     private async Task<bool> OpenAsync(string spokenName, string heard, CancellationToken ct)
     {
@@ -258,17 +369,94 @@ public sealed class InteractionController
             return false;
         }
 
-        _target = window;
-        _targetProfile = profile;
-        _segments.Clear();
-        _boxHadText = prepared.HasTrailingText == true;
-        _needsLeadingSpace = _boxHadText;
-        Mode = InteractionMode.Dictation;
-        Report(StatusKind.Success, $"Typing into {profile?.Name ?? DisplayName(window)}. Pause, then say “send”.", heard);
+        BindTarget(window, profile, prepared.HasTrailingText == true, searchField: false);
+        Report(StatusKind.Success, $"Typing into {profile?.Name ?? DisplayName(window)}. Say “stop typing” when done.", heard);
         return true;
     }
 
-    private bool Send(string heard)
+    private async Task<bool> FocusSearchAsync(string heard, bool addressBar, CancellationToken ct)
+    {
+        var window = _desktop.GetForegroundWindow();
+        if (window is null)
+        {
+            Report(StatusKind.Warning, "There's no window in front.", heard);
+            return false;
+        }
+
+        var profile = _apps.FindProfileForProcess(window.ProcessName, window.Title);
+        var name = profile?.Name ?? DisplayName(window);
+        var keys = addressBar ? profile?.AddressBarKeys : profile?.SearchKeys;
+        if (keys is not null)
+        {
+            if (!CheckField(heard, null, allowUnknown: true))
+            {
+                return false;
+            }
+
+            _desktop.PressKeys(keys);
+            await Task.Delay(150, ct).ConfigureAwait(false);
+        }
+        else if (addressBar)
+        {
+            Report(StatusKind.Warning, $"{name} doesn't have an address bar I know.", heard);
+            return false;
+        }
+        else
+        {
+            var focused = await _desktop.FocusSearchBoxAsync(window, ct).ConfigureAwait(false);
+            if (!focused.Success)
+            {
+                Report(StatusKind.Warning, focused.Message, heard);
+                return false;
+            }
+        }
+
+        BindTarget(window, profile, boxHadText: false, searchField: true);
+        Report(StatusKind.Success, addressBar ? "In the address bar. Say where to go, then “search”." : "In the search box. Say what to search for, then “search”.", heard);
+        return true;
+    }
+
+    private void BindTarget(WindowRef window, AppEntry? profile, bool boxHadText, bool searchField)
+    {
+        _target = window;
+        _targetProfile = profile;
+        _segments.Clear();
+        _boxHadText = boxHadText;
+        _needsLeadingSpace = boxHadText;
+        _endsSentence = true;
+        _searchField = searchField;
+        Mode = InteractionMode.Dictation;
+    }
+
+    private bool PressKeys(string chord, string heard)
+    {
+        if (Mode == InteractionMode.Dictation)
+        {
+            if (!EnsureTargetFocused(heard, null))
+            {
+                return false;
+            }
+        }
+        else if (_desktop.GetForegroundWindow() is null)
+        {
+            Report(StatusKind.Warning, "There's no window in front.", heard);
+            return false;
+        }
+
+        if (!CheckField(heard, null, allowUnknown: true))
+        {
+            return false;
+        }
+
+        _desktop.PressKeys(chord);
+
+        // Keys can move the caret or change the text, so earlier phrases can no longer be undone by length.
+        _segments.Clear();
+        Report(StatusKind.Success, $"Pressed {chord}.", heard);
+        return true;
+    }
+
+    private bool Send(string heard, string doneMessage)
     {
         if (_target is null)
         {
@@ -292,38 +480,114 @@ public sealed class InteractionController
         _segments.Clear();
         _boxHadText = false;
         _needsLeadingSpace = false;
+        _endsSentence = true;
         if (Mode == InteractionMode.Dictation && _options.ReturnToCommandModeAfterSend)
         {
-            Mode = InteractionMode.Command;
+            Awake();
         }
 
-        Report(StatusKind.Success, "Sent.", heard);
+        Report(StatusKind.Success, doneMessage, heard);
         return true;
     }
 
-    private void Type(string text, string heard)
+    /// <summary>Formats and types dictated text into the bound target. Returns false if nothing was typed.</summary>
+    private bool TypeDictated(string text, string heard)
     {
         if (!EnsureTargetFocused(heard, text))
+        {
+            return false;
+        }
+
+        if (!CheckField(heard, text, allowUnknown: false))
+        {
+            return false;
+        }
+
+        var formatted = _formatter.Format(text, continuesSentence: !_endsSentence, searchField: _searchField);
+        if (formatted.Length == 0)
+        {
+            return false;
+        }
+
+        var toType = _needsLeadingSpace && formatted[0] != '\n' ? " " + formatted : formatted;
+        _segments.Push(TypeWithNewLines(toType, NewLineKeys));
+        _needsLeadingSpace = !char.IsWhiteSpace(toType[^1]);
+        _endsSentence = toType[^1] is '.' or '!' or '?' or '\n' or ':';
+        LastTranscript = formatted;
+        Report(StatusKind.Success, "Typed.", heard);
+        return true;
+    }
+
+    private void InsertIntoFocused(string formatted, string? heard)
+    {
+        var window = _desktop.GetForegroundWindow();
+        if (window is null)
+        {
+            Report(StatusKind.Warning, "There's no window to type into.", heard);
+            return;
+        }
+
+        if (!CheckField(heard ?? string.Empty, formatted, allowUnknown: true))
         {
             return;
         }
 
-        switch (_desktop.CheckFocusedField())
+        var profile = _apps.FindProfileForProcess(window.ProcessName, window.Title);
+        var leadingSpace = _desktop.FocusedTextEndsWithNonWhitespace() == true && formatted[0] != '\n';
+        TypeWithNewLines(leadingSpace ? " " + formatted : formatted, profile?.NewLineKeys ?? "Shift+Enter");
+
+        // Push-to-talk text isn't part of the voice “scratch that” history.
+        _segments.Clear();
+        LastTranscript = formatted;
+        Report(StatusKind.Success, "Typed.", heard);
+    }
+
+    private int TypeWithNewLines(string text, string newLineKeys)
+    {
+        var count = 0;
+        var parts = text.Split('\n');
+        for (var i = 0; i < parts.Length; i++)
         {
-            case FieldCheck.Password:
-                Report(StatusKind.Warning, "That's a password field — I won't type there.", heard);
-                return;
-            case FieldCheck.Unknown:
-                UntypedText = string.IsNullOrEmpty(UntypedText) ? text : UntypedText + " " + text;
-                Report(StatusKind.Warning, "I couldn't check the focused field, so nothing was typed. The text is in the tray menu.", heard);
-                return;
+            if (i > 0)
+            {
+                _desktop.PressKeys(newLineKeys);
+                count++;
+            }
+
+            if (parts[i].Length > 0)
+            {
+                _desktop.TypeText(parts[i]);
+                count += new StringInfo(parts[i]).LengthInTextElements;
+            }
         }
 
-        var toType = _needsLeadingSpace ? " " + text : text;
-        _desktop.TypeText(toType);
-        _segments.Push(new StringInfo(toType).LengthInTextElements);
-        _needsLeadingSpace = !char.IsWhiteSpace(toType[^1]);
-        Report(StatusKind.Success, "Typed.", heard);
+        return count;
+    }
+
+    /// <summary>Refuses password fields and administrator windows (and, unless allowed, fields that can't be checked).</summary>
+    private bool CheckField(string heard, string? pendingText, bool allowUnknown)
+    {
+        var check = _desktop.CheckFocusedField();
+        var refusal = check switch
+        {
+            FieldCheck.Password => "That's a password field — I won't type there.",
+            FieldCheck.Elevated => "That window runs as administrator; Windows won't let me type into it.",
+            FieldCheck.Unknown when !allowUnknown => "I couldn't check the focused field, so nothing was typed. The text is in the tray menu.",
+            _ => null,
+        };
+
+        if (refusal is null)
+        {
+            return true;
+        }
+
+        if (pendingText is not null && check == FieldCheck.Unknown)
+        {
+            UntypedText = string.IsNullOrEmpty(UntypedText) ? pendingText : UntypedText + " " + pendingText;
+        }
+
+        Report(StatusKind.Warning, refusal, heard);
+        return false;
     }
 
     /// <summary>Refuses to act if the bound window is no longer in front, keeping any dictated text in memory.</summary>
@@ -342,7 +606,7 @@ public sealed class InteractionController
 
         if (Mode == InteractionMode.Dictation)
         {
-            Mode = InteractionMode.Command;
+            Awake();
         }
 
         Report(
@@ -351,6 +615,23 @@ public sealed class InteractionController
                 ? "Focus moved to another window, so I didn't do that. Say “start typing” to continue."
                 : "Focus moved to another window, so nothing was typed. Say “start typing” to continue.",
             heard);
+        return false;
+    }
+
+    private void Awake()
+    {
+        Mode = InteractionMode.Command;
+        _awakeSince = _options.Clock();
+    }
+
+    private bool ExpireAwake()
+    {
+        if (_options.WakeWordEnabled && Mode == InteractionMode.Command && _options.Clock() - _awakeSince > _options.AwakeTimeout)
+        {
+            Mode = InteractionMode.Standby;
+            return true;
+        }
+
         return false;
     }
 

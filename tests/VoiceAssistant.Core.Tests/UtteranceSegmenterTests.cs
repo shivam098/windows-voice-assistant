@@ -13,7 +13,10 @@ public class UtteranceSegmenterTests
     }
 
     private static float[] Tone(int ms, float amplitude = 0.2f) =>
-        Enumerable.Range(0, Rate * ms / 1000).Select(i => (float)(amplitude * Math.Sin(2 * Math.PI * 220 * i / Rate))).ToArray();
+        Enumerable.Range(0, Rate * ms / 1000).Select(i => (float)(amplitude * Math.Sin(2 * Math.PI * 220 * i / Rate) * Syllable(i))).ToArray();
+
+    /// <summary>Speech-like loudness: ~4 syllables per second with deep dips between them (wide dynamic range).</summary>
+    private static double Syllable(int i) => 0.03 + (0.97 * Math.Pow(Math.Sin(Math.PI * 4 * i / Rate), 2));
 
     private static List<float[]> Run(UtteranceSegmenter segmenter, params float[][] chunks)
     {
@@ -64,7 +67,7 @@ public class UtteranceSegmenterTests
     {
         var options = new SegmenterOptions { MaxUtteranceMs = 3000 };
         var output = Run(new UtteranceSegmenter(options), Silence(500), Tone(7000), Silence(900));
-        Assert.True(output.Count >= 2);
+        Assert.True(output.Count >= 2, "continuous speech keeps producing capped utterances");
         Assert.All(output, u => Assert.True(u.Length <= Rate * 3.1));
     }
 
@@ -80,6 +83,29 @@ public class UtteranceSegmenterTests
     public void Steady_background_noise_does_not_trigger()
     {
         Assert.Empty(Run(new UtteranceSegmenter(), Silence(5000, level: 0.003f)));
+    }
+
+    [Fact]
+    public void Loud_room_at_startup_is_learned_as_background()
+    {
+        // Steady -40 dBFS noise (fan / mic boost) must not become endless 14 s utterances.
+        Assert.Empty(Run(new UtteranceSegmenter(), Silence(20000, level: 0.017f)));
+    }
+
+    [Fact]
+    public void Noise_that_starts_later_is_adapted_to_after_one_capped_cut()
+    {
+        var output = Run(new UtteranceSegmenter(new SegmenterOptions { MaxUtteranceMs = 3000 }), Silence(2000), Silence(30000, level: 0.03f));
+        Assert.InRange(output.Count, 1, 2);
+    }
+
+    [Fact]
+    public void Speech_is_still_detected_after_adapting_to_noise()
+    {
+        var output = Run(
+            new UtteranceSegmenter(new SegmenterOptions { MaxUtteranceMs = 3000 }),
+            Silence(2000), Silence(10000, level: 0.01f), Tone(800, 0.3f), Silence(1500, level: 0.01f));
+        Assert.Contains(output, u => u.Length < Rate * 2);
     }
 
     [Fact]

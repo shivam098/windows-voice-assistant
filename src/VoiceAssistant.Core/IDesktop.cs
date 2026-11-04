@@ -21,6 +21,9 @@ public enum FieldCheck
     Safe,
     Password,
 
+    /// <summary>The foreground window runs as administrator; Windows silently drops synthesized input to it.</summary>
+    Elevated,
+
     /// <summary>Accessibility query failed or timed out; treat as unsafe.</summary>
     Unknown,
 }
@@ -36,10 +39,16 @@ public interface IDesktop
     /// </summary>
     Task<DesktopResult> OpenOrActivateAsync(AppEntry app, CancellationToken cancellationToken);
 
-    /// <summary>Verifies the focused control can receive text and, for supporting profiles, focuses the message box.</summary>
+    /// <summary>Verifies the focused control can receive text and, for profiles with a <see cref="AppEntry.TextArea"/>, focuses it.</summary>
     Task<TextTargetResult> PrepareTextTargetAsync(WindowRef window, AppEntry? profile, CancellationToken cancellationToken);
 
+    /// <summary>Finds an edit box named like "search" in the window and focuses it.</summary>
+    Task<TextTargetResult> FocusSearchBoxAsync(WindowRef window, CancellationToken cancellationToken);
+
     FieldCheck CheckFocusedField();
+
+    /// <summary>True if the focused text field already ends in a non-space character (so dictation needs a leading space); null if unknown.</summary>
+    bool? FocusedTextEndsWithNonWhitespace();
 
     void TypeText(string text);
 

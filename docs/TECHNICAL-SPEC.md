@@ -5,6 +5,20 @@ Version: 0.2
 Date: 2026-11-04  
 Companion: PRD.md
 
+## Implementation status (v0.2.0)
+
+v0.2 adds Wispr-style dictation, the “Hey Jarvis” wake word, app actions, and fixes recognition in noisy rooms:
+
+| Area | v0.2.0 implementation |
+|---|---|
+| Phrase detection | Energy VAD with a **median** background estimate and an 80%-quiet end window, then **Silero** (whisper.cpp VAD) on each utterance to drop non-speech and split merged phrases |
+| Wake word | “Hey Jarvis” (+ common Whisper spellings). Standby ignores other speech silently; commands work for 8 s after the wake word, extended by each command |
+| Dictate anywhere | Hold `Ctrl+Win` (low-level keyboard hook), `Ctrl+Win+Space` hands-free, `Esc` cancel, `Alt+Shift+Z` paste last. Long recordings are chunked at Silero pauses into ≤14 s pieces |
+| Text insertion | Clipboard paste with Clipboard-History/cloud exclusion formats; previous clipboard restored unless it changed. `Type` (SendInput) remains available |
+| Dictation clean-up | Rule-based: fillers, spoken punctuation, inline “scratch that”, replacements, snippets, capitalisation across phrases, no trailing full stop in search boxes |
+| App actions | Per-app `textArea` (`Bottom`/`Largest`) + `textAreaName`; browser `searchKeys` (`Ctrl+L`); UIA “search” box lookup elsewhere; “search for …”; key presses and editing shortcuts |
+| Not implemented | AI rewrites/tones/command mode (needs a language model), multi-language, “new chat” |
+
 ## Implementation status (v0.1.0, Phase 1 MVP)
 
 What shipped differs from the v0.2 draft below in these places; the draft is kept for the roadmap.

@@ -20,7 +20,8 @@
             Padding="14,8"
             MaxWidth="560">
         <StackPanel Orientation="Horizontal">
-            <Ellipse x:Name="Dot" Width="12" Height="12" Fill="#9AA0A6" VerticalAlignment="Center" Margin="0,0,10,0" />
+            <Image Source="/Assets/logo-64.png" Width="22" Height="22" VerticalAlignment="Center" Margin="0,0,8,0" RenderOptions.BitmapScalingMode="HighQuality" />
+            <Ellipse x:Name="Dot" Width="10" Height="10" Fill="#9AA0A6" VerticalAlignment="Center" Margin="0,0,10,0" />
             <StackPanel VerticalAlignment="Center">
                 <TextBlock x:Name="ModeText" Foreground="White" FontSize="13" FontWeight="SemiBold" Text="Starting…" />
                 <TextBlock x:Name="MessageText" Foreground="#E8EAED" FontSize="12" TextTrimming="CharacterEllipsis" MaxWidth="500" Visibility="Collapsed" />

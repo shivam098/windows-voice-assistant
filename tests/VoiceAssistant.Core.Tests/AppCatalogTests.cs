@@ -10,7 +10,7 @@ public class AppCatalogTests
         Launch = @"shell:AppsFolder\com.github.githubapp",
         ProcessNames = ["github"],
         WindowTitleContains = "GitHub Copilot",
-        FocusComposer = true,
+        TextArea = "Bottom",
     };
 
     private static AppCatalog Catalog()

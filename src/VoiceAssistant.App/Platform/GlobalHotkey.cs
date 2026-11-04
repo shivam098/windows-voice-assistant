@@ -5,7 +5,8 @@ namespace VoiceAssistant.App.Platform;
 /// <summary>Registers a system-wide hotkey using a message-only window.</summary>
 internal sealed class GlobalHotkey : IDisposable
 {
-    private const int Id = 0x5641;
+    private static int _nextId = 0x5641;
+    private readonly int Id = Interlocked.Increment(ref _nextId);
     private readonly HwndSource _source;
     private readonly bool _registered;
 

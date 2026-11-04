@@ -34,15 +34,16 @@ public partial class OverlayWindow : Window
     {
         (ModeText.Text, Dot.Fill) = mode switch
         {
-            InteractionMode.Dictation => ("Typing — pause, then say “send”", Brush("#EA4335")),
+            InteractionMode.Dictation => ("Typing — say “stop typing” when done", Brush("#EA4335")),
             InteractionMode.Command => ("Listening for a command", Brush("#4C8DF6")),
-            _ => ("Paused", Brush("#9AA0A6")),
+            InteractionMode.Standby => ("Say “Hey Jarvis” · hold Ctrl+Win to dictate", Brush("#8AB4F8")),
+            _ => ("Paused · hold Ctrl+Win to dictate", Brush("#9AA0A6")),
         };
 
         if (activity is not null)
         {
             ModeText.Text = activity;
-            Dot.Fill = Brush("#FBBC04");
+            Dot.Fill = activity.StartsWith("Dictating", StringComparison.Ordinal) ? Brush("#EA4335") : Brush("#FBBC04");
         }
     }
 

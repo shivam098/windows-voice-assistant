@@ -14,10 +14,10 @@ internal static class KeyboardInput
         ["Ctrl"] = 0x11, ["Control"] = 0x11, ["Shift"] = 0x10, ["Alt"] = 0x12, ["Win"] = 0x5B,
         ["Enter"] = 0x0D, ["Return"] = 0x0D, ["Tab"] = 0x09, ["Esc"] = 0x1B, ["Escape"] = 0x1B,
         ["Backspace"] = 0x08, ["Delete"] = 0x2E, ["Space"] = 0x20, ["Home"] = 0x24, ["End"] = 0x23,
-        ["Up"] = 0x26, ["Down"] = 0x28, ["Left"] = 0x25, ["Right"] = 0x27,
+        ["Up"] = 0x26, ["Down"] = 0x28, ["Left"] = 0x25, ["Right"] = 0x27, ["PageUp"] = 0x21, ["PageDown"] = 0x22,
     };
 
-    private static readonly HashSet<ushort> Extended = [0x2E, 0x24, 0x23, 0x26, 0x28, 0x25, 0x27, 0x5B];
+    private static readonly HashSet<ushort> Extended = [0x2E, 0x24, 0x23, 0x26, 0x28, 0x25, 0x27, 0x21, 0x22, 0x5B];
 
     public static ushort ParseKey(string name)
     {
@@ -81,8 +81,7 @@ internal static class KeyboardInput
 
     public static void TypeUnicode(string text)
     {
-        // Small batches keep slower editors from dropping characters.
-        const int batch = 48;
+        var batch = Math.Max(1, TypingChunk);
         for (var start = 0; start < text.Length; start += batch)
         {
             var inputs = new List<Win32.INPUT>();
@@ -93,14 +92,38 @@ internal static class KeyboardInput
             }
 
             Send(inputs);
-            if (start + batch < text.Length)
+            if (start + batch < text.Length && TypingDelayMs > 0)
             {
-                Thread.Sleep(8);
+                Thread.Sleep(TypingDelayMs);
             }
         }
     }
 
     public static void TapUnassignedKey() => Repeat(UnassignedVk, 1);
+
+    /// <summary>
+    /// Waits (up to <paramref name="timeoutMs"/>) until the user has released Ctrl/Alt/Shift/Win, so injected
+    /// text or Ctrl+V isn't combined with keys still held from a hotkey (e.g. Alt+Shift+Z, Ctrl+Win).
+    /// </summary>
+    public static void WaitForModifiersReleased(int timeoutMs = 1000)
+    {
+        var deadline = Environment.TickCount64 + timeoutMs;
+        while (Environment.TickCount64 < deadline &&
+               (IsDown(0x10) || IsDown(0x11) || IsDown(0x12) || IsDown(0x5B) || IsDown(0x5C)))
+        {
+            Thread.Sleep(15);
+        }
+    }
+
+    private static bool IsDown(int vk) => (GetAsyncKeyState(vk) & 0x8000) != 0;
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
+
+    /// <summary>Characters per SendInput call and pause between calls. Some editors (Notepad) drop fast bursts.</summary>
+    public static int TypingChunk { get; set; } = 48;
+
+    public static int TypingDelayMs { get; set; } = 8;
 
     private static Win32.INPUT Key(ushort vk, bool up)
     {

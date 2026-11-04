@@ -28,6 +28,9 @@ internal sealed class AppSettings
 
     public string ModelFile { get; set; } = "ggml-small.en-q8_0.bin";
 
+    /// <summary>Silero voice-activity model: drops music/noise and splits merged phrases. Optional but strongly recommended.</summary>
+    public string VadModelFile { get; set; } = "ggml-silero-v6.2.0.bin";
+
     public int Threads { get; set; } = Math.Clamp(Environment.ProcessorCount * 2 / 3, 2, 8);
 
     /// <summary>768 tokens covers 15.36 s of audio and is ~3x faster than the default 30 s window.</summary>
@@ -60,7 +63,41 @@ internal sealed class AppSettings
     /// <summary>Average token probability below which a command is ignored. Clean speech scores 0.5–1.0.</summary>
     public float MinCommandConfidence { get; set; } = 0.3f;
 
+    /// <summary>
+    /// "Paste": insert dictated text via the clipboard (reliable everywhere; kept out of Clipboard History and
+    /// your previous clipboard is restored). "Type": synthesized keystrokes (some apps drop characters).
+    /// </summary>
+    public string InsertMethod { get; set; } = "Paste";
+
     public bool DiscoverStartMenuApps { get; set; } = true;
+
+    /// <summary>When true, commands need “Hey Jarvis” first (then work without it for <see cref="AwakeSeconds"/>).</summary>
+    public bool WakeWordEnabled { get; set; } = true;
+
+    /// <summary>Accepted wake phrases (Whisper's common spellings of “Hey Jarvis” are included).</summary>
+    public List<string> WakeWords { get; set; } = [.. CommandParser.DefaultWakeWords];
+
+    public int AwakeSeconds { get; set; } = 8;
+
+    /// <summary>Hold Ctrl+Win to dictate into any app (release to type). Ctrl+Win+Space toggles hands-free dictation.</summary>
+    public bool PushToTalk { get; set; } = true;
+
+    public string PasteLastHotkey { get; set; } = "Alt+Shift+Z";
+
+    public bool RemoveFillerWords { get; set; } = true;
+
+    public bool SpokenPunctuation { get; set; } = true;
+
+    /// <summary>Whole-word fixes applied to dictated text (personal dictionary), e.g. { "git hub": "GitHub" }.</summary>
+    public Dictionary<string, string> Replacements { get; set; } = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["git hub"] = "GitHub",
+        ["co-pilot"] = "Copilot",
+        ["co pilot"] = "Copilot",
+    };
+
+    /// <summary>Say the trigger (or “insert &lt;trigger&gt;”) to type the text, e.g. { "my signature": "Thanks,\nShivam" }.</summary>
+    public Dictionary<string, string> Snippets { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     public List<AppEntry> Apps { get; set; } = DefaultApps();
 
@@ -75,7 +112,8 @@ internal sealed class AppSettings
             WindowTitleContains = "GitHub Copilot",
             SubmitKeys = "Enter",
             NewLineKeys = "Shift+Enter",
-            FocusComposer = true,
+            TextArea = "Bottom",
+            TextAreaName = "Message",
         },
         new AppEntry
         {
@@ -84,8 +122,24 @@ internal sealed class AppSettings
             ProcessNames = ["Notepad"],
             SubmitKeys = string.Empty,
             NewLineKeys = "Enter",
+            TextArea = "Largest",
         },
+        Browser("Google Chrome", ["chrome", "google chrome"], "chrome.exe", "chrome"),
+        Browser("Microsoft Edge", ["edge", "microsoft edge"], "msedge.exe", "msedge"),
+        Browser("Firefox", ["firefox", "mozilla firefox"], "firefox.exe", "firefox"),
     ];
+
+    private static AppEntry Browser(string name, IReadOnlyList<string> aliases, string exe, string process) => new()
+    {
+        Name = name,
+        Aliases = aliases,
+        Launch = exe,
+        ProcessNames = [process],
+        SubmitKeys = "Enter",
+        NewLineKeys = "Shift+Enter",
+        SearchKeys = "Ctrl+L",
+        AddressBarKeys = "Ctrl+L",
+    };
 
     public static AppSettings LoadOrCreate()
     {

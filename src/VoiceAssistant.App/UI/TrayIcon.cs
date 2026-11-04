@@ -23,6 +23,7 @@ internal sealed class TrayIcon : IDisposable
     {
         _hotkey = hotkey;
         _icons[InteractionMode.Paused] = MakeIcon(Color.FromArgb(154, 160, 166));
+        _icons[InteractionMode.Standby] = MakeIcon(null);
         _icons[InteractionMode.Command] = MakeIcon(Color.FromArgb(76, 141, 246));
         _icons[InteractionMode.Dictation] = MakeIcon(Color.FromArgb(234, 67, 53));
 
@@ -34,6 +35,7 @@ internal sealed class TrayIcon : IDisposable
         menu.Items.Add(_status);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_toggle);
+        menu.Items.Add(new ToolStripMenuItem("Paste last dictation\tAlt+Shift+Z", null, (_, _) => host.PasteLastTranscript()));
         menu.Items.Add(new ToolStripMenuItem("Copy text that wasn't typed", null, (_, _) => host.CopyUntypedText()));
         menu.Items.Add(new ToolStripMenuItem("Voice commands…", null, (_, _) => ShowCommands()));
         menu.Items.Add(new ToolStripSeparator());
@@ -66,6 +68,7 @@ internal sealed class TrayIcon : IDisposable
         {
             InteractionMode.Dictation => "Typing",
             InteractionMode.Command => "Listening for commands",
+            InteractionMode.Standby => "Waiting for “Hey Jarvis”",
             _ => "Paused (microphone off)",
         };
         _status.Text = label;
@@ -86,22 +89,24 @@ internal sealed class TrayIcon : IDisposable
         }
     }
 
-    private static (Icon, nint) MakeIcon(Color color)
+    /// <summary>The app logo with a status dot in the corner (no dot while waiting for the wake word).</summary>
+    private static (Icon, nint) MakeIcon(Color? dot)
     {
+        using var stream = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/Assets/app.ico")).Stream;
+        using var logo = new Icon(stream, 32, 32);
         using var bitmap = new Bitmap(32, 32);
         using (var g = Graphics.FromImage(bitmap))
         {
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             g.Clear(Color.Transparent);
-            using var brush = new SolidBrush(color);
-            g.FillEllipse(brush, 3, 3, 26, 26);
-            using var white = new SolidBrush(Color.White);
-            g.FillRectangle(white, 13, 8, 6, 11);
-            g.FillEllipse(white, 13, 5, 6, 6);
-            g.FillEllipse(white, 13, 16, 6, 6);
-            using var pen = new Pen(Color.White, 2);
-            g.DrawArc(pen, 9, 11, 14, 12, 0, 180);
-            g.DrawLine(pen, 16, 23, 16, 27);
+            g.DrawIcon(logo, new Rectangle(0, 0, 32, 32));
+            if (dot is { } color)
+            {
+                using var ring = new SolidBrush(Color.White);
+                g.FillEllipse(ring, 17, 17, 15, 15);
+                using var fill = new SolidBrush(color);
+                g.FillEllipse(fill, 19, 19, 11, 11);
+            }
         }
 
         var handle = bitmap.GetHicon();
@@ -110,21 +115,25 @@ internal sealed class TrayIcon : IDisposable
 
     private static void ShowCommands() => System.Windows.MessageBox.Show(
         """
-        Listening for a command (blue):
-          “Open GitHub Copilot”  /  “Switch to Notepad”
-          “Open GitHub Copilot and start typing”
-          “Start typing”
+        DICTATE ANYWHERE (like Wispr Flow)
+          Hold Ctrl+Win, speak, release → text is typed where your cursor is
+          Ctrl+Win+Space → hands-free dictation; press again to finish
+          Esc → cancel   ·   Alt+Shift+Z → paste last dictation
+          Say “comma”, “question mark”, “new line”; “um/uh” are removed;
+          “…scratch that…” drops the phrase before it.
+
+        VOICE COMMANDS — start with “Hey Jarvis” (then 8 s without it)
+          “Hey Jarvis, open Notepad”  ·  “…open Chrome”  ·  “…open GitHub Copilot”
+          “Start typing”  (Notepad: document; Copilot: message box)
+          “Go to the search box” / “Go to the address bar”
+          “Search for weather in Bangalore”
+          “New tab”, “Go back”, “Refresh”, “Copy”, “Paste”, “Undo”, “Save”
+          “Press enter / tab / escape / down …”
           “Pause listening”
 
-        Typing (red) — pause briefly before each command:
-          “Send”  /  “Send it”  /  “Submit”
-          “Scratch that”  (removes the last phrase)
-          “Clear box”
-          “New line”  /  “New paragraph”
-          “Stop typing”  (back to commands, nothing sent)
-
-        Anything else you say while typing is typed as text.
-        Prefix with “Computer, …” to force a command.
+        WHILE TYPING (red) — pause briefly before each command
+          “Send” / “Search”     “Scratch that”     “Clear box”
+          “New line”            “Stop typing”      “Press tab”
         """,
         "Voice Assistant — commands");
 
