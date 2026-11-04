@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/VoiceAssistant.App/VoiceAssistant.App.csproj" />
+    <Project Path="src/VoiceAssistant.Core/VoiceAssistant.Core.csproj" />
+    <Project Path="src/VoiceAssistant.Speech/VoiceAssistant.Speech.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/VoiceAssistant.Core.Tests/VoiceAssistant.Core.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/SpeechBench/SpeechBench.csproj" />
+  </Folder>
+</Solution>
