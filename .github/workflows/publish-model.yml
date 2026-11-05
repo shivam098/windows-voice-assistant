@@ -1,0 +1,65 @@
+name: Publish model
+
+# Rebuilds a converted speech model from its original Hugging Face weights on a clean runner, checks it is
+# byte-identical to the hash the app pins, and attaches it to a model release. Recipe: tools/ModelConvert/README.md.
+on:
+  workflow_dispatch:
+    inputs:
+      hf_repo:
+        description: Hugging Face model (e.g. Oriserve/Whisper-Hindi2Hinglish-Apex)
+        required: true
+      file:
+        description: Output file name (e.g. ggml-hinglish-apex-q8_0.bin)
+        required: true
+      sha256:
+        description: Expected SHA-256 of the output (the hash pinned in ModelDownloader.cs)
+        required: true
+      tag:
+        description: Release tag to attach it to (e.g. models-hinglish-apex-1)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Download weights, mel filters and whisper.cpp v1.9.2 quantizer
+        shell: pwsh
+        run: |
+          $hf = "https://huggingface.co/${{ github.event.inputs.hf_repo }}/resolve/main"
+          New-Item -ItemType Directory model | Out-Null
+          foreach ($f in 'config.json', 'vocab.json', 'model.safetensors') { curl.exe -sSLfo "model\$f" "$hf/$f"; if ($LASTEXITCODE) { throw "download of $f failed" } }
+          curl.exe -sSLfo mel_filters.npz https://raw.githubusercontent.com/openai/whisper/main/whisper/assets/mel_filters.npz
+          curl.exe -sSLfo whisper-bin-x64.zip https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.2/whisper-bin-x64.zip
+          Expand-Archive whisper-bin-x64.zip whisper-bin
+          Get-FileHash model\model.safetensors -Algorithm SHA256 | Format-List Hash
+
+      - name: Convert and quantize
+        shell: pwsh
+        run: |
+          dotnet run --project tools/ModelConvert -c Release -- model mel_filters.npz model-f16.bin
+          if ($LASTEXITCODE) { throw 'conversion failed' }
+          $quantize = Get-ChildItem whisper-bin -Recurse -Filter whisper-quantize.exe | Select-Object -First 1
+          & $quantize.FullName model-f16.bin "${{ github.event.inputs.file }}" q8_0
+          if ($LASTEXITCODE) { throw 'quantization failed' }
+
+      - name: Verify against the pinned hash
+        shell: pwsh
+        run: |
+          $actual = (Get-FileHash "${{ github.event.inputs.file }}" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "SHA-256 $actual  ($((Get-Item '${{ github.event.inputs.file }}').Length) bytes)"
+          if ($actual -ne '${{ github.event.inputs.sha256 }}') { throw "Hash mismatch: expected ${{ github.event.inputs.sha256 }}" }
+
+      - name: Attach to release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.inputs.tag }}" "${{ github.event.inputs.file }}" --clobber
