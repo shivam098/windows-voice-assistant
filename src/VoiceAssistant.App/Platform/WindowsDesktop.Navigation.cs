@@ -278,14 +278,22 @@ internal sealed partial class WindowsDesktop
         var point = new System.Windows.Point(rect.CenterX, rect.CenterY);
         var hit = SafeGet(() => AutomationElement.FromPoint(point));
         var walker = TreeWalker.RawViewWalker;
-        var onTarget = false;
-        for (var (node, depth) = (hit, 0); node is not null && depth < 25; node = SafeGet(() => walker.GetParent(node)), depth++)
+
+        // The point may land on another part of the same row (WhatsApp draws the time over the name cell's centre),
+        // so the target and the grid rows around it all count; anything else on top (the search box) does not.
+        var accepted = new List<AutomationElement> { element };
+        for (var (parent, depth) = (SafeGet(() => walker.GetParent(element)), 0); parent is not null && depth < 4; parent = SafeGet(() => walker.GetParent(parent)), depth++)
         {
-            if (SafeGet(() => Automation.Compare(node, element)))
+            if (SafeGet(() => parent.Current.ControlType) == ControlType.DataItem)
             {
-                onTarget = true;
-                break;
+                accepted.Add(parent);
             }
+        }
+
+        var onTarget = false;
+        for (var (node, depth) = (hit, 0); node is not null && depth < 25 && !onTarget; node = SafeGet(() => walker.GetParent(node)), depth++)
+        {
+            onTarget = accepted.Any(a => SafeGet(() => Automation.Compare(node, a)));
         }
 
         if (!onTarget)

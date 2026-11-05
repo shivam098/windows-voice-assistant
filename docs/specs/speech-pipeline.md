@@ -45,6 +45,7 @@ Energy-based, robust to fans and background music:
 |---|---|---|
 | English model | `ggml-small.en-q8_0.bin` (252 MB, SHA-256 `67a179f608ea6114bd3fdb9060e762b588a3fb3bd00c4387971be4d177958067`) | Sub-second, robust on real voices |
 | Hindi + English model | `ggml-hinglish-swift-q8_0.bin` (78 MB, SHA-256 `0cf6e7077971d9aa43963b04bf764a47600e873f7e0f3f0f9742323560171245`), dictation only | Roman-script Hinglish; see [dictation.md](dictation.md#hindi--english-hinglish) |
+| Hindi + English, accurate | `ggml-hinglish-apex-q8_0.bin` (834 MB, SHA-256 `0b4324d2c1ad64f20883ee7fcd5d2bb0a8466287dc70d74bc47066200c28c719`), dictation only, when chosen | Final text only; the live preview uses the fast model |
 | Engine | whisper.cpp (Windows: Whisper.net 1.9.1) | Runs everywhere, CPU and GPU back ends |
 | Language | English (`en`) for both models | The Hinglish model was trained to emit Roman script with `en` |
 | Threads | ⅔ of cores, 2–8 | |

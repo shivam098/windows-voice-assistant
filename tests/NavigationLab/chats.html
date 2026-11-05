@@ -29,7 +29,9 @@
     const row = document.createElement('div');
     row.setAttribute('role', 'row'); row.tabIndex = -1; row.setAttribute('aria-selected', 'false');
     const prefix = unread ? `${unread} unread message${unread > 1 ? 's' : ''} ` : '';
-    row.innerHTML = `<div role="gridcell"><span class="name">${prefix ? `<span style="position:absolute;left:-9999px">${prefix}</span>` : ''}${name}</span> <span class="time">${time}</span></div><div class="preview">${preview}</div>`;
+    // Like WhatsApp: the time is drawn by the row over the middle of the name cell, so the cell's centre is not inside the cell.
+    row.style.position = 'relative';
+    row.innerHTML = `<div role="gridcell" style="width:100%"><span class="name">${prefix ? `<span style="position:absolute;left:-9999px">${prefix}</span>` : ''}${name}</span></div><span class="time" style="position:absolute;left:230px;top:12px;width:120px;text-align:center">${time}</span><div class="preview">${preview}</div>`;
     row.style.flexDirection = 'column';
     // Like WhatsApp: opens on a real mouse click only (a programmatic "select" just highlights).
     row.addEventListener('click', () => { document.title = 'Lab Chats - opened ' + name; });

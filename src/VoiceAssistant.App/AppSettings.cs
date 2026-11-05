@@ -24,6 +24,9 @@ internal static class AppPaths
     /// <summary>Present while dictation uses the Hindi + English model.</summary>
     public static string HinglishDictationFlag => Path.Combine(DataDir, "dictation-hinglish");
 
+    /// <summary>Present while Hindi + English dictation uses the larger, more accurate (slower) model.</summary>
+    public static string HinglishAccurateFlag => Path.Combine(DataDir, "dictation-hinglish-accurate");
+
     public static string SettingsFile { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VoiceAssistant", "settings.json");
 
     /// <summary>Learned rephrasings and app usage counts (local only).</summary>
@@ -75,6 +78,12 @@ internal sealed class AppSettings
     /// script. Downloaded the first time it is switched on. Commands always use <see cref="ModelFile"/>.
     /// </summary>
     public string HinglishModelFile { get; set; } = "ggml-hinglish-swift-q8_0.bin";
+
+    /// <summary>
+    /// "Hindi + English (accurate)": a larger model (834 MB, about 10x slower than <see cref="HinglishModelFile"/>,
+    /// fewer mistakes). Typed text comes from it; the live preview keeps using the fast model.
+    /// </summary>
+    public string HinglishAccurateModelFile { get; set; } = "ggml-hinglish-apex-q8_0.bin";
 
     public string DictationLanguageHotkey { get; set; } = "Alt+Shift+H";
 

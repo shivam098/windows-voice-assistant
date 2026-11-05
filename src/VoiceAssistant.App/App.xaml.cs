@@ -81,7 +81,7 @@ public partial class App : System.Windows.Application
         _host.Activity += (mode, activity) => _overlay.ShowMode(mode, activity);
         _host.DictationPreview += _overlay.ShowPreview;
         _host.DictationLanguageChanged += _overlay.SetDictationLanguage;
-        _overlay.SetDictationLanguage(_host.HinglishDictation);
+        _overlay.SetDictationLanguage(_host.HinglishDictation, _host.HinglishAccurate);
         _markers = new MarkerOverlay();
         _host.ChoicesChanged += _markers.ShowBadges;
         _host.Highlight += _markers.Flash;

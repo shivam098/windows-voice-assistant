@@ -67,7 +67,7 @@ Test sets: the 14 English clips above; 25 clips (≤14 s) of read Hindi from Goo
 | large-v3-turbo, auto language | 874 MB | 9.5 s | 0.0% (14/14) | 30.1% | Devanagari, sometimes Urdu script or another language |
 | large-v3-turbo, Hindi fixed | 874 MB | 3.0 s | 43.2% (6/14) | 18.2% | Devanagari |
 
-Swift was chosen for Hindi + English dictation: fastest, small, and it kept short commands such as “Send” intact (Apex heard “Sand”). Commands always use small.en. Caveats: the English clips are a synthetic US voice (Oriserve trained on ~550 h of Indian-accented speech), FLEURS is formal read Hindi rather than mixed speech, and skeleton WER is approximate.
+Swift was chosen for Hindi + English dictation: fastest, small, and it kept short commands such as “Send” intact (Apex heard “Sand”). Commands always use small.en. Apex is offered as the optional *Hindi + English — accurate* mode (since 0.5.2) for people who prefer fewer Hindi mistakes over speed. Caveats: the English clips are a synthetic US voice (Oriserve trained on ~550 h of Indian-accented speech), FLEURS is formal read Hindi rather than mixed speech, and skeleton WER is approximate.
 
 ## Desktop self-test (v0.2)
 
