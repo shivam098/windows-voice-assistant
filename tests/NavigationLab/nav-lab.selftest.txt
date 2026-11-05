@@ -1,5 +1,5 @@
 # Voice navigation self-test (docs/specs/navigation.md, acceptance scenarios N1–N9).
-# Run with tests/NavigationLab/run.ps1: it opens a new Chrome window with videos.html, lab.html, mail.html (in that
+# Run with tests/NavigationLab/run.ps1: it opens a new Chrome window with videos.html, lab.html, mail.html, chats.html (in that
 # order), then runs this script through the real controller and UI Automation. Output: PASS/FAIL and redacted messages.
 # stoponfail: if the test window isn't in front, stop rather than type into whatever is.
 stoponfail
@@ -53,7 +53,7 @@ expect: Lofi music
 say: stop typing
 
 # N8: several unnamed boxes: numbers to choose (the address bar is not a candidate)
-say: go to the last tab
+say: go to the third tab
 wait 600
 expecttitle: Lab Inbox
 say: start typing
@@ -66,3 +66,14 @@ say: stop typing
 # N9: show and hide numbers
 say: show numbers
 say: hide numbers
+
+# N10: chat-list rows (grid items, WhatsApp-style) by name, including a sound-alike name
+say: go to the last tab
+wait 600
+expecttitle: Lab Chats
+say: select vivash morang
+wait 500
+expecttitle: opened Bibhash Morang
+say: click family
+wait 500
+expecttitle: opened Family

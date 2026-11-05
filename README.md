@@ -121,7 +121,7 @@ After “Hey Jarvis”, move around like you'd tell a person. Each command build
 |---|---|
 | “Go to the first tab” / “second tab” / “last tab” / “tab 3” | Selects that tab in the browser window in front |
 | “Go to the YouTube tab” / “go to the tab where YouTube is open” | Finds the tab by its title in any Chrome, Edge or Firefox window (the front window wins ties) |
-| “Click New on the left” / “click Library” / “select Pull requests” / “expand Sessions” | Clicks it by name. “on the left/right/top/bottom”, “the second …” narrow it down |
+| “Click New on the left” / “click Library” / “select Pull requests” / “expand Sessions” / “select Family” (WhatsApp Web chat) | Clicks it by name; sound-alike names (“Vivash” for “Bibhash”) still match. “on the left/right/top/bottom”, “the second …” narrow it down |
 | “Go to Issues” | Clicks a button called Issues when no app or tab has that name |
 | “Start typing” | Puts the cursor in the right box: the app's message box, the site's box (YouTube/Google search, WhatsApp message…), the page's only box, or asks which |
 | “Start typing in YouTube” / “… in the message box” / “… in the first tab” | Goes there first, then starts typing |

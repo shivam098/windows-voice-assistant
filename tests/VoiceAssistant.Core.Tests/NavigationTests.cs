@@ -52,7 +52,51 @@ public class NavigationTests
     [InlineData("new", "New project", NameMatcher.Strong - 1)]
     [InlineData("libary", "Library", NameMatcher.Fuzzy)]
     [InlineData("issues", "Pull requests", 0)]
+    [InlineData("vivash morang", "Bibhash Morang aise bante hai richest", NameMatcher.Fuzzy)]
+    [InlineData("bibhash morang", "Bibhash Morang", NameMatcher.Exact)]
+    [InlineData("shivam", "Sivam", NameMatcher.Fuzzy)]
+    [InlineData("send", "Sent items", 0)]
+    [InlineData("settings", "Getting started", 0)]
+    [InlineData("delete", "Deleted Items", 0)]
+    [InlineData("new", "Now playing", 0)]
+    [InlineData("vivash", "Prabhatee", 0)]
     public void Scores(string spoken, string name, int expected) => Assert.Equal(expected, NameMatcher.Score(spoken, name));
+
+    [Theory]
+    [InlineData("vivash", "bibas")]
+    [InlineData("bibhash", "bibas")]
+    [InlineData("phool", "ful")]
+    [InlineData("shivam", "sibam")]
+    public void Sound_keys_merge_common_recognition_swaps(string word, string key) => Assert.Equal(key, NameMatcher.SoundKey(word));
+
+    // Real WhatsApp Web chat-list names (each row is reported as a row and a name cell).
+    [Fact]
+    public void Chat_rows_lose_unread_counts_and_times()
+    {
+        Assert.Equal("Bibhash Morang aise bante hai richest", NameMatcher.CleanElementName("1 unread message Bibhash Morang 11:27 am aise bante hai richest"));
+        Assert.Equal("Family", NameMatcher.CleanElementName("10 unread messages Family 11:25 am"));
+        Assert.Equal("Standup at 10 am", NameMatcher.CleanElementName("Standup at 10 am"));
+        Assert.Equal("9:30 AM", NameMatcher.CleanElementName("9:30 AM"));
+        Assert.Equal("7:00 AM, Good morning", NameMatcher.CleanElementName("7:00 AM, Good morning"));
+    }
+
+    [Theory]
+    [InlineData("vivash morang")]
+    [InlineData("bibhash morang")]
+    [InlineData("bibhash")]
+    public void A_chat_row_and_its_name_cell_resolve_to_one_target(string spoken)
+    {
+        UiElement[] rows =
+        [
+            new(1, "1 unread message Bibhash Morang 11:27 am aise bante hai richest", ElementRole.ListItem, R(80, 540, 570, 90)),
+            new(2, "1 unread message Bibhash Morang 11:27 am aise bante hai richest", ElementRole.ListItem, R(80, 540, 570, 90)),
+            new(3, "1 unread message Bibhash Morang 11:27 am", ElementRole.ListItem, R(160, 550, 480, 30)),
+            new(4, "10 unread messages Family 11:25 am Papa: https://www.facebook.com/share", ElementRole.ListItem, R(80, 632, 570, 90)),
+            new(5, "Prabhatee 11:19 am Sticker", ElementRole.ListItem, R(80, 816, 570, 90)),
+        ];
+        var result = TargetResolver.ResolveElement(rows, new ElementTarget(spoken), new ScreenRect(0, 0, 2000, 1180));
+        Assert.Equal(3, Assert.IsType<Resolution<UiElement>.Single>(result).Item.Id);
+    }
 
     // ---- resolving elements ----
 
