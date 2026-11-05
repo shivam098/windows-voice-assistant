@@ -116,6 +116,7 @@ Accessibility names and tab titles carry extras that must be removed before matc
 |---|---|
 | `New project, Ctrl + Alt + Shift + N` | `New project` (shortcut suffix) |
 | `Resolving an Unspecified Issue, unread` | `Resolving an Unspecified Issue` (state suffix: unread, selected, expanded, pinned, “Status: …”) |
+| `1 unread message Bibhash Morang 11:27 am aise bante…` | `Bibhash Morang aise bante…` (chat rows: unread-count prefix, and clock times after other text; a name that starts with a time, like `9:30 AM`, keeps it) |
 | Tab `(53) WhatsApp - Pinned - Memory usage - 120 MB` | `WhatsApp` (notification count, status segments) |
 | Tab `Lofi beats - YouTube - Google Chrome` | `Lofi beats - YouTube` (browser name) |
 
@@ -129,12 +130,14 @@ Score of spoken phrase *s* against a cleaned name *n* (both normalised):
 | 70 − extra words (min 60) | Every word of *s* is a word of *n* | “youtube” vs “Lofi beats YouTube” |
 | 60 | Every word of *n* is in *s* (user said more) | “the pull requests page” vs “Pull requests” |
 | 50 | 1 letter different (4–7 letters) or 2 (8+) | “libary” vs “Library” |
+| 50 | Every spoken word *sounds like* a word of *n*: the same sound key (v/w→b, z→j, q→k, ph→f, ee→i, oo→u, h after a consonant dropped, doubled letters merged) | “vivash morang” vs “Bibhash Morang” |
 | 0 | Otherwise | |
 
 - **Tabs** score against the whole cleaned title *and* each “ - ” segment, keeping the best; a tab needs ≥ 60.
   (“youtube” vs “Lofi beats - YouTube” = 100 via the segment; vs “YouTube Music” = 79, so the first wins.)
 - **Elements** need ≥ 50 for “click”, ≥ 70 for the “go to X” fallback.
-- Only the **best score** survives; ties are ambiguous.
+- Only the **best score** survives; ties are ambiguous, except that a tied element whose centre lies inside a larger
+  tied element (a chat row and its name cell) replaces it: the innermost one is the target.
 
 ## Narrowing
 

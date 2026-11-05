@@ -22,6 +22,9 @@ internal sealed partial class WindowsDesktop
         (ControlType.TabItem, ElementRole.Tab), (ControlType.MenuItem, ElementRole.MenuItem), (ControlType.TreeItem, ElementRole.TreeItem),
         (ControlType.ListItem, ElementRole.ListItem), (ControlType.CheckBox, ElementRole.CheckBox), (ControlType.RadioButton, ElementRole.RadioButton),
         (ControlType.ComboBox, ElementRole.ComboBox),
+
+        // Rows and cells of grids and tables, e.g. WhatsApp Web's chat list.
+        (ControlType.DataItem, ElementRole.ListItem),
     ];
 
     private readonly object _registryGate = new();
@@ -184,6 +187,12 @@ internal sealed partial class WindowsDesktop
     {
         try
         {
+            if (element.Current.ControlType == ControlType.DataItem && !preferSelect)
+            {
+                // Web grid rows (chat lists) only highlight on a programmatic "select"; they open on a real click.
+                return token.IsCancellationRequested ? "timed out" : ClickGridItem(element, rect, window);
+            }
+
             if (preferSelect && element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var select))
             {
                 ((SelectionItemPattern)select).Select();
@@ -239,6 +248,53 @@ internal sealed partial class WindowsDesktop
         }
 
         return ClickAt(rect.CenterX, rect.CenterY, window) ? null : "something else is on top of it";
+    }
+
+    /// <summary>
+    /// Scrolls a grid row into view, then clicks its centre only if that point really is the row (a half-hidden row's
+    /// centre can sit over the search box above the list). Null on success.
+    /// </summary>
+    private static string? ClickGridItem(AutomationElement element, ScreenRect rect, nint window)
+    {
+        if (element.TryGetCurrentPattern(ScrollItemPattern.Pattern, out var scroll))
+        {
+            try
+            {
+                ((ScrollItemPattern)scroll).ScrollIntoView();
+                Thread.Sleep(150);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or COMException)
+            {
+                Log.Warn($"scroll into view failed: {ex.GetType().Name}");
+            }
+        }
+
+        var now = element.Current.BoundingRectangle;
+        if (!now.IsEmpty)
+        {
+            rect = new ScreenRect(now.X, now.Y, now.Width, now.Height);
+        }
+
+        var point = new System.Windows.Point(rect.CenterX, rect.CenterY);
+        var hit = SafeGet(() => AutomationElement.FromPoint(point));
+        var walker = TreeWalker.RawViewWalker;
+        var onTarget = false;
+        for (var (node, depth) = (hit, 0); node is not null && depth < 25; node = SafeGet(() => walker.GetParent(node)), depth++)
+        {
+            if (SafeGet(() => Automation.Compare(node, element)))
+            {
+                onTarget = true;
+                break;
+            }
+        }
+
+        if (!onTarget)
+        {
+            Log.Warn("grid item centre is covered by something else");
+            return "something else is on top of it";
+        }
+
+        return ClickAt(point.X, point.Y, window) ? null : "something else is on top of it";
     }
 
     /// <summary>

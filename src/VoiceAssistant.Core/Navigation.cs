@@ -124,6 +124,11 @@ public static partial class NameMatcher
 
         var text = ShortcutSuffixRegex().Replace(name.Trim(), string.Empty);
         text = StateSuffixRegex().Replace(text, string.Empty);
+
+        // Chat lists: “1 unread message Bibhash Morang 11:27 am aise bante…” → “Bibhash Morang aise bante…”.
+        text = UnreadPrefixRegex().Replace(text, string.Empty);
+        text = ClockTimeRegex().Replace(text, " ");
+        text = MultiSpaceRegex().Replace(text, " ");
         return text.Trim().TrimEnd(',', ';').Trim();
     }
 
@@ -202,8 +207,47 @@ public static partial class NameMatcher
             return Partial;
         }
 
-        var allowed = sc.Length switch { < 4 => 0, <= 7 => 1, _ => 2 };
-        return allowed > 0 && Levenshtein(sc, nc) <= allowed ? Fuzzy : 0;
+        var allowed = AllowedSlips(sc.Length);
+        if (allowed > 0 && Levenshtein(sc, nc) <= allowed)
+        {
+            return Fuzzy;
+        }
+
+        // Every spoken word sounds like a word of the name: “vivash morang” vs “Bibhash Morang” (Whisper often swaps
+        // v/b, drops or adds the h of bh/sh/th, and doubles letters in names).
+        var nameKeys = nw.Select(SoundKey).ToArray();
+        var spokenKeys = sw.Select(SoundKey).ToArray();
+        if (spokenKeys.Any(k => k.Length >= 3) && spokenKeys.All(k => nameKeys.Contains(k)))
+        {
+            return Fuzzy;
+        }
+
+        return 0;
+    }
+
+    private static int AllowedSlips(int length) => length switch { < 4 => 0, <= 7 => 1, _ => 2 };
+
+    /// <summary>
+    /// A rough sound-alike key for one word: v/w → b, z → j, q → k, ph → f, ee → i, oo → u, an h after a consonant is
+    /// dropped (bh, sh, th, kh…), and doubled letters collapse. “vivash” and “bibhash” both become “bibas”.
+    /// </summary>
+    public static string SoundKey(string word)
+    {
+        var w = word.Replace("ph", "f", StringComparison.Ordinal).Replace("ck", "k", StringComparison.Ordinal)
+            .Replace("ee", "i", StringComparison.Ordinal).Replace("oo", "u", StringComparison.Ordinal);
+        var key = new System.Text.StringBuilder(w.Length);
+        foreach (var ch in w)
+        {
+            var c = ch switch { 'v' or 'w' => 'b', 'z' => 'j', 'q' => 'k', _ => ch };
+            if (key.Length > 0 && ((c == 'h' && !"aeiou".Contains(key[^1], StringComparison.Ordinal)) || key[^1] == c))
+            {
+                continue;
+            }
+
+            key.Append(c);
+        }
+
+        return key.ToString();
     }
 
     private static string Singular(string word) =>
@@ -242,6 +286,16 @@ public static partial class NameMatcher
 
     [GeneratedRegex(@"([,.]\s*(unread|read|selected|not selected|expanded|collapsed|checked|unchecked|pinned|new|draft|status:.*|\d+ unread.*))+$", RegexOptions.IgnoreCase)]
     private static partial Regex StateSuffixRegex();
+
+    [GeneratedRegex(@"^\d+\s+unread\s+messages?[,.]?\s*", RegexOptions.IgnoreCase)]
+    private static partial Regex UnreadPrefixRegex();
+
+    // Only after other text, so time-slot buttons (“9:30 AM”, “7:00 AM, Good morning”) keep their names.
+    [GeneratedRegex(@"(?<=\S\s+)\b\d{1,2}:\d{2}(\s*[ap]\.?m\.?)?(?=\s|$|[,.])", RegexOptions.IgnoreCase)]
+    private static partial Regex ClockTimeRegex();
+
+    [GeneratedRegex(@"\s{2,}")]
+    private static partial Regex MultiSpaceRegex();
 
     [GeneratedRegex(@"^\(\d+\+?\)\s*")]
     private static partial Regex NotificationCountRegex();
@@ -348,11 +402,22 @@ public static class TargetResolver
             }
 
             var best = scored.Max(x => x.Score);
-            candidates = SortReadingOrder(scored.Where(x => x.Score == best).Select(x => x.Element));
+            candidates = SortReadingOrder(CollapseNested(scored.Where(x => x.Score == best).Select(x => x.Element).ToList()));
         }
 
         return Pick(candidates, target.Ordinal);
     }
+
+    /// <summary>
+    /// Equally good matches where one sits inside the other are the same thing on screen (a chat row and its name
+    /// cell): keep the innermost.
+    /// </summary>
+    private static IReadOnlyList<UiElement> CollapseNested(IReadOnlyList<UiElement> tied) =>
+        tied.Where(outer => !tied.Any(inner =>
+                !ReferenceEquals(inner, outer) &&
+                inner.Rect.Width * inner.Rect.Height < outer.Rect.Width * outer.Rect.Height &&
+                outer.Rect.Contains(inner.Rect.CenterX, inner.Rect.CenterY)))
+            .ToList();
 
     /// <summary>
     /// Tabs by position (“first tab” = in the front-most browser window) or by cleaned title. Titles are long, so a

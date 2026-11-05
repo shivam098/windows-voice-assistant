@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lab Chats</title>
+<style>
+  body { font: 16px "Segoe UI", sans-serif; margin: 0; background: #111b21; color: #e9edef; }
+  #search { margin: 16px; width: 520px; padding: 10px; border-radius: 8px; border: 0; background: #202c33; color: #eee; font: inherit; }
+  #list { width: 560px; height: 360px; overflow-y: auto; }
+  [role=row] { display: flex; padding: 14px 16px; border-bottom: 1px solid #222d34; cursor: pointer; }
+  [role=row]:hover { background: #202c33; }
+  .name { font-weight: 600; } .time { margin-left: auto; color: #8696a0; font-size: 13px; } .preview { color: #8696a0; }
+</style>
+</head>
+<body>
+<!-- Mirrors WhatsApp Web's chat list: a grid whose rows (and name cells) are UIA DataItems with an unread prefix, a time
+     and a message preview in their names, and that open only on a real click. -->
+<input id="search" aria-label="Search or start a new chat" placeholder="Search or start a new chat">
+<div id="list" role="grid" aria-label="Chat list"></div>
+<script>
+  const chats = [
+    ['CD-#P6', '28/9/2026', 'You: Hi Simran', 0], ['LikheJoWaqtTujhe', '11:11 am', 'Nipun Nagsen: 1111', 0],
+    ['Bibhash Morang', '11:27 am', 'aise bante hai richest', 1], ['Family', '11:25 am', 'Papa: a link', 10],
+    ['Ananya Coaching', '11:22 am', 'a reel', 0], ['Prabhatee', '11:19 am', 'Sticker', 1],
+    ['Mulberry Tenants', '11:19 am', 'Vinay: Still not done ?', 0], ['Pritam', '11:18 am', 'Yeayy', 0],
+  ];
+  const list = document.getElementById('list');
+  for (const [name, time, preview, unread] of chats) {
+    const row = document.createElement('div');
+    row.setAttribute('role', 'row'); row.tabIndex = -1; row.setAttribute('aria-selected', 'false');
+    const prefix = unread ? `${unread} unread message${unread > 1 ? 's' : ''} ` : '';
+    row.innerHTML = `<div role="gridcell"><span class="name">${prefix ? `<span style="position:absolute;left:-9999px">${prefix}</span>` : ''}${name}</span> <span class="time">${time}</span></div><div class="preview">${preview}</div>`;
+    row.style.flexDirection = 'column';
+    // Like WhatsApp: opens on a real mouse click only (a programmatic "select" just highlights).
+    row.addEventListener('click', () => { document.title = 'Lab Chats - opened ' + name; });
+    list.appendChild(row);
+  }
+</script>
+</body>
+</html>
