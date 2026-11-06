@@ -66,6 +66,7 @@ Press **`Alt`+`Shift`+`H`** (or tray menu › *Dictation language* › *Hindi + 
 
 - Uses [Oriserve's Whisper-Hindi2Hinglish-Swift](https://huggingface.co/Oriserve/Whisper-Hindi2Hinglish-Swift) model (Apache-2.0, see [third-party notices](docs/THIRD-PARTY-NOTICES.md)), still fully on this PC. It downloads once (~80 MB, SHA-256 verified) the first time you switch it on.
 - Voice commands (“Hey Jarvis…”, “send”, “stop typing”) keep using the English model, so they work the same in both modes.
+- **More accurate, but slower:** tray › *Dictation language* › *Hindi + English — accurate* uses Oriserve's larger [Whisper-Hindi2Hinglish-Apex](https://huggingface.co/Oriserve/Whisper-Hindi2Hinglish-Apex) for the typed text (about 2.5 s per phrase on a Snapdragon X Elite, slower on older PCs; one-time 830 MB download). Words still show live while you speak (from the fast model); the accurate text is typed when you release. Alt+Shift+H then switches between English and the accurate mode.
 - English accuracy is lower in this mode (it misheard “pull request” as “poll request” in testing), so switch back for English-only writing. See [BENCHMARKS.md](docs/BENCHMARKS.md#hindi--english).
 
 ## 2. Voice control — “Hey Jarvis”
@@ -162,6 +163,7 @@ Every click is outlined briefly so you can see what happened. It works with apps
 | `pasteLastHotkey` | `Alt+Shift+Z` | |
 | `dictationLanguageHotkey` | `Alt+Shift+H` | Switch dictation between English and Hindi + English |
 | `hinglishModelFile` | `ggml-hinglish-swift-q8_0.bin` | Hindi + English dictation model (downloaded on first use) |
+| `hinglishAccurateModelFile` | `ggml-hinglish-apex-q8_0.bin` | Model for *Hindi + English — accurate* (downloaded when first chosen) |
 | `insertMethod` | `Paste` | `Type` sends keystrokes instead (some apps drop characters) |
 | `removeFillerWords` / `spokenPunctuation` | `true` | Dictation clean-up |
 | `replacements` | git hub → GitHub, … | Whole-word fixes |

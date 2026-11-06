@@ -71,8 +71,14 @@ leading space when the box already ends in a non-space character.
 - Toggle: **Alt+Shift+H** or the tray menu. Persists across restarts. The pill shows **HI + EN**.
 - Dictation uses a second model (Oriserve Whisper-Hindi2Hinglish-Swift) that writes Hindi in Roman letters:
   “kal meeting reschedule kar do”.
+- **Accurate option** (tray › Dictation language › *Hindi + English — accurate*): text is typed by the larger Oriserve
+  Whisper-Hindi2Hinglish-Apex (834 MB, ~2.5 s per phrase on a Snapdragon X Elite vs 0.22 s; fewer mistakes on Hindi:
+  19.1 % vs 23.5 % skeleton WER in [BENCHMARKS.md](../BENCHMARKS.md#hindi--english)). The live preview keeps using the
+  fast model (no preview until it is loaded). Until Apex is loaded, dictation uses the fast model and says so. The pill
+  shows **HI + EN · accurate**. Alt+Shift+H switches between English and whichever Hindi + English mode was chosen last.
 - The model downloads (~80 MB, SHA-256 pinned) in the background the first time it's switched on; voice commands keep
-  working meanwhile. A dictation started before it's ready uses English and says so.
+  working meanwhile. A dictation started before it's ready uses English and says so. The accurate model downloads
+  (with progress every 10 %) the first time that option is chosen.
 - **Commands always use the English model.** In voice typing, each phrase is first parsed with the English model;
   only if it's not a command is the Hindi model asked for the text to type.
 - Each push-to-talk recording keeps the model it started with, even if the language is switched mid-recording.

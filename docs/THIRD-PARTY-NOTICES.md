@@ -8,6 +8,7 @@ Voice Assistant downloads and runs these models and libraries. Each keeps its ow
 | [OpenAI Whisper](https://github.com/openai/whisper) `small.en` (ggml from [ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp)) | English commands and dictation | MIT |
 | [Silero VAD](https://github.com/snakers4/silero-vad) (ggml from [ggml-org/whisper-vad](https://huggingface.co/ggml-org/whisper-vad)) | Detecting speech vs. noise | MIT |
 | [Oriserve/Whisper-Hindi2Hinglish-Swift](https://huggingface.co/Oriserve/Whisper-Hindi2Hinglish-Swift), fine-tuned from [openai/whisper-base](https://huggingface.co/openai/whisper-base) | Hindi + English dictation | Apache-2.0 (fine-tune); MIT (OpenAI Whisper base model, mel filters, vocabulary) |
+| [Oriserve/Whisper-Hindi2Hinglish-Apex](https://huggingface.co/Oriserve/Whisper-Hindi2Hinglish-Apex), fine-tuned from [openai/whisper-large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo) | Hindi + English dictation, accurate option | Apache-2.0 (fine-tune); MIT (OpenAI Whisper base model, mel filters, vocabulary) |
 | [NAudio](https://github.com/naudio/NAudio) | Microphone capture | MIT |
 
 ## Oriserve/Whisper-Hindi2Hinglish-Swift
@@ -24,3 +25,13 @@ same release.
 whisper.cpp can run them; the model itself was not retrained. The steps are in
 [tools/ModelConvert/README.md](../tools/ModelConvert/README.md). The model is distributed "AS IS", without warranties
 or conditions of any kind.
+
+## Oriserve/Whisper-Hindi2Hinglish-Apex
+
+Model by [Oriserve](https://oriserve.com), licensed under the Apache License, Version 2.0; a copy of the license is attached to the
+[`models-hinglish-apex-1`](https://github.com/shivam098/windows-voice-assistant/releases/tag/models-hinglish-apex-1) release.
+It is fine-tuned from OpenAI's `whisper-large-v3-turbo`; the converted file also contains OpenAI Whisper's mel filter bank and
+tokenizer vocabulary (Copyright (c) 2022 OpenAI, MIT License, text attached to the same release).
+
+**Changes made:** converted to ggml and quantized to q8_0 exactly like the Swift model above; not retrained. Distributed
+"AS IS", without warranties or conditions of any kind.

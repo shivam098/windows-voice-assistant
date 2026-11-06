@@ -37,9 +37,13 @@ internal sealed class AssistantHost : IDisposable
     private readonly DictationFormatter _formatter;
     private WhisperRecognizer? _recognizer;
     private volatile WhisperRecognizer? _hinglish;
+    private volatile WhisperRecognizer? _hinglishAccurate;
     private readonly object _hinglishGate = new();
     private Task? _hinglishLoad;
+    private Task? _hinglishAccurateLoad;
+    private CancellationTokenSource? _accurateLoadCts;
     private volatile bool _hinglishDictation;
+    private volatile bool _hinglishAccurateMode;
     private WhisperRecognizer? _captureRecognizer;
     private CancellationTokenSource? _previewCts;
     private Task? _previewTask;
@@ -58,6 +62,7 @@ internal sealed class AssistantHost : IDisposable
         _settings = settings;
         _ui = ui;
         _hinglishDictation = persistMemory && File.Exists(AppPaths.HinglishDictationFlag);
+        _hinglishAccurateMode = persistMemory && File.Exists(AppPaths.HinglishAccurateFlag);
         WindowsDesktop.InsertMethod = settings.InsertMethod;
         _sounds = new SoundFeedback(settings.SoundFeedback && persistMemory);
         if (settings.LearnFromUsage)
@@ -152,8 +157,11 @@ internal sealed class AssistantHost : IDisposable
     /// <summary>Raised on the UI thread with the live transcript while dictation records (null clears it).</summary>
     public event Action<string?>? DictationPreview;
 
-    /// <summary>Raised on the UI thread when dictation switches between English (false) and Hindi + English (true).</summary>
-    public event Action<bool>? DictationLanguageChanged;
+    /// <summary>
+    /// Raised on the UI thread when the dictation language changes: Hindi + English on/off, and whether it uses the
+    /// accurate (slower) model.
+    /// </summary>
+    public event Action<bool, bool>? DictationLanguageChanged;
 
     /// <summary>Raised on the UI thread with numbers to draw on screen (null hides them).</summary>
     public event Action<IReadOnlyList<ChoiceBadge>?>? ChoicesChanged;
@@ -163,6 +171,9 @@ internal sealed class AssistantHost : IDisposable
 
     /// <summary>True when dictation uses the Hindi + English model.</summary>
     public bool HinglishDictation => _hinglishDictation;
+
+    /// <summary>True when Hindi + English dictation uses the accurate (larger, slower) model.</summary>
+    public bool HinglishAccurate => _hinglishAccurateMode;
 
     public InteractionMode Mode => _mode;
 
@@ -241,6 +252,8 @@ internal sealed class AssistantHost : IDisposable
             return Task.CompletedTask;
         }
 
+        // A recording that ended early (cancelled, silence) may have kept a model that's no longer chosen.
+        ReleaseAccurateIfUnused();
         lock (_captureGate)
         {
             _capture.Clear();
@@ -263,11 +276,26 @@ internal sealed class AssistantHost : IDisposable
 
         _capturing = true;
         _captureRecognizer = _recognizer;
+        WhisperRecognizer? previewRecognizer = _recognizer;
         if (_hinglishDictation)
         {
-            if (_hinglish is not null)
+            var final = HinglishForTyping();
+            if (_hinglishAccurateMode && _hinglishAccurate is null)
             {
-                _captureRecognizer = _hinglish;
+                // Retries after a failed download or load, too.
+                EnsureHinglishLoading();
+            }
+
+            if (final is not null)
+            {
+                _captureRecognizer = final;
+
+                // The accurate model takes seconds per pass: the live preview uses the fast one (or is skipped).
+                previewRecognizer = final == _hinglishAccurate ? _hinglish : final;
+                if (_hinglishAccurateMode && final != _hinglishAccurate)
+                {
+                    Report(StatusKind.Warning, "The accurate Hindi + English model is still loading; this dictation uses the fast one.");
+                }
             }
             else
             {
@@ -278,11 +306,11 @@ internal sealed class AssistantHost : IDisposable
 
         _sounds.Play(SoundFeedback.Cue.StartTyping);
         PostActivity(label);
-        if (_settings.LivePreview)
+        if (_settings.LivePreview && previewRecognizer is not null)
         {
             _previewCts = new CancellationTokenSource();
             var token = _previewCts.Token;
-            var recognizer = _captureRecognizer;
+            var recognizer = previewRecognizer;
             _previewTask = Task.Run(() => RunPreviewAsync(recognizer, token));
         }
 
@@ -353,7 +381,7 @@ internal sealed class AssistantHost : IDisposable
             foreach (var chunk in chunks)
             {
                 var result = await recognizer.TranscribeAsync(chunk, _shutdown.Token).ConfigureAwait(false);
-                Log.Info($"dictation chunk audio={chunk.Length * 1000 / SampleRate}ms asr={result.Elapsed.TotalMilliseconds:F0}ms{(recognizer == _hinglish ? " model=hinglish" : string.Empty)}");
+                Log.Info($"dictation chunk audio={chunk.Length * 1000 / SampleRate}ms asr={result.Elapsed.TotalMilliseconds:F0}ms{(recognizer == _hinglishAccurate ? " model=hinglish-accurate" : recognizer == _hinglish ? " model=hinglish" : string.Empty)}");
                 parts.Add(TranscriptText.Clean(result.Text));
             }
 
@@ -362,6 +390,9 @@ internal sealed class AssistantHost : IDisposable
         finally
         {
             PostActivity(null);
+
+            // The language may have changed during this recording.
+            ReleaseAccurateIfUnused();
         }
     });
 
@@ -371,41 +402,78 @@ internal sealed class AssistantHost : IDisposable
         return Task.CompletedTask;
     });
 
-    /// <summary>Switches dictation between English and Hindi + English (Alt+Shift+H). Takes effect from the next phrase.</summary>
+    /// <summary>
+    /// Switches dictation between English and Hindi + English (Alt+Shift+H), keeping the fast/accurate choice.
+    /// Takes effect from the next phrase.
+    /// </summary>
     public void ToggleDictationLanguage() => Enqueue(() =>
     {
-        ApplyDictationLanguage(!_hinglishDictation);
+        ApplyDictationLanguage(!_hinglishDictation, _hinglishAccurateMode);
         return Task.CompletedTask;
     });
 
-    /// <summary>Sets the dictation language (tray menu); does nothing if it is already that language.</summary>
-    public void SetDictationLanguage(bool hinglish) => Enqueue(() =>
+    /// <summary>Sets the dictation language (tray menu); <paramref name="accurate"/> picks the larger Hindi + English model.</summary>
+    public void SetDictationLanguage(bool hinglish, bool accurate = false) => Enqueue(() =>
     {
-        if (hinglish != _hinglishDictation)
+        if (hinglish != _hinglishDictation || (hinglish && accurate != _hinglishAccurateMode))
         {
-            ApplyDictationLanguage(hinglish);
+            ApplyDictationLanguage(hinglish, hinglish ? accurate : _hinglishAccurateMode);
+        }
+        else if (hinglish && _recognizer is not null)
+        {
+            // Choosing the current mode again retries a model that failed to download or load.
+            EnsureHinglishLoading();
         }
 
         return Task.CompletedTask;
     });
 
-    private void ApplyDictationLanguage(bool on)
+    private void ApplyDictationLanguage(bool on, bool accurate)
     {
         _hinglishDictation = on;
+        _hinglishAccurateMode = accurate;
         StateFlags.Set(AppPaths.HinglishDictationFlag, on);
-        Log.Info($"dictation language: {(on ? "hinglish" : "english")}");
-        Post(() => DictationLanguageChanged?.Invoke(on));
+        StateFlags.Set(AppPaths.HinglishAccurateFlag, accurate);
+        Log.Info($"dictation language: {(on ? accurate ? "hinglish-accurate" : "hinglish" : "english")}");
+        Post(() => DictationLanguageChanged?.Invoke(on, accurate));
+        if (!accurate)
+        {
+            // Not wanted any more: stop its download/load and free its memory (about 1 GB).
+            _accurateLoadCts?.Cancel();
+            ReleaseAccurateIfUnused();
+        }
+
         if (!on)
         {
             Report(StatusKind.Info, "Dictation language: English.");
         }
-        else if (_hinglish is not null)
+        else if (HinglishForTyping() is { } ready && (!accurate || ready == _hinglishAccurate))
         {
-            Report(StatusKind.Info, "Dictation language: Hindi + English (Hindi is typed in Roman letters).");
+            Report(StatusKind.Info, accurate
+                ? "Dictation language: Hindi + English, accurate (slower; Hindi is typed in Roman letters)."
+                : "Dictation language: Hindi + English (Hindi is typed in Roman letters).");
         }
         else if (_recognizer is not null)
         {
             EnsureHinglishLoading();
+        }
+    }
+
+    /// <summary>The model that types Hindi + English text: the accurate one when chosen and loaded, else the fast one.</summary>
+    private WhisperRecognizer? HinglishForTyping() =>
+        _hinglishAccurateMode && _hinglishAccurate is { } accurate ? accurate : _hinglish;
+
+    /// <summary>
+    /// Frees the accurate model when that mode is no longer chosen. Runs on the work queue, where every use of it
+    /// happens; a recording that started with it keeps it until it has been transcribed.
+    /// </summary>
+    private void ReleaseAccurateIfUnused()
+    {
+        if (!_hinglishAccurateMode && !_capturing && _hinglishAccurate is { } model)
+        {
+            _hinglishAccurate = null;
+            model.Dispose();
+            Log.Info("hinglish-accurate model unloaded");
         }
     }
 
@@ -480,12 +548,15 @@ internal sealed class AssistantHost : IDisposable
 
         drained &= _previewTask?.Wait(TimeSpan.FromSeconds(5)) ?? true;
         Task? hinglishLoad;
+        Task? hinglishAccurateLoad;
         lock (_hinglishGate)
         {
             hinglishLoad = _hinglishLoad;
+            hinglishAccurateLoad = _hinglishAccurateLoad;
         }
 
         drained &= hinglishLoad?.Wait(TimeSpan.FromSeconds(5)) ?? true;
+        drained &= hinglishAccurateLoad?.Wait(TimeSpan.FromSeconds(5)) ?? true;
         StopMicrophone();
         _microphone.Dispose();
         _sounds.Dispose();
@@ -493,6 +564,7 @@ internal sealed class AssistantHost : IDisposable
         {
             _recognizer?.Dispose();
             _hinglish?.Dispose();
+            _hinglishAccurate?.Dispose();
             _detector?.Dispose();
         }
         else
@@ -547,7 +619,7 @@ internal sealed class AssistantHost : IDisposable
     /// Makes sure a model file exists, downloading and verifying it on first run (portable zips ship without
     /// models). Returns false if it is still missing.
     /// </summary>
-    private async Task<bool> EnsureModelAsync(string file, bool firstRun = true)
+    private async Task<bool> EnsureModelAsync(string file, bool firstRun = true, string? what = null, CancellationToken cancellationToken = default)
     {
         if (File.Exists(Path.Combine(AppPaths.ModelsDir, file)))
         {
@@ -561,28 +633,41 @@ internal sealed class AssistantHost : IDisposable
         }
 
         Log.Info($"downloading {file}");
+        what ??= "Hindi + English model (about 80 MB";
         Report(StatusKind.Info, firstRun
             ? "First run: downloading the speech model (one time, stays on this PC)…"
-            : "Downloading the Hindi + English model (about 80 MB, one time)…");
+            : $"Downloading the {what}, one time)…");
         try
         {
-            // Progress shows in the pill only on first run; later downloads must not replace a "Dictating…" label.
+            // Progress shows in the pill only on first run; later downloads must not replace a "Dictating…" label,
+            // so they report every 10% as a status message instead.
+            var lastTenth = 0;
             await ModelDownloader.DownloadAsync(file, AppPaths.ModelsDir, percent =>
             {
                 if (firstRun)
                 {
                     PostActivity($"Downloading speech model… {percent}%");
                 }
-            }, _shutdown.Token).ConfigureAwait(false);
+                else if (percent / 10 > lastTenth && percent < 100)
+                {
+                    lastTenth = percent / 10;
+                    Report(StatusKind.Info, $"Downloading the {what.Split(" (")[0]}… {percent}%");
+                }
+            }, cancellationToken.CanBeCanceled ? cancellationToken : _shutdown.Token).ConfigureAwait(false);
             Log.Info($"downloaded {file}");
             return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && !_shutdown.IsCancellationRequested)
+        {
+            Log.Info($"download of {file} cancelled");
+            return false;
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidDataException or TaskCanceledException or UnauthorizedAccessException)
         {
             Log.Error($"download of {file} failed: {ex.GetType().Name}");
             Report(StatusKind.Error, firstRun
                 ? "Couldn't download the speech model. Check the internet connection and restart Voice Assistant."
-                : "Couldn't download the Hindi + English model. Check the internet connection and switch it on again.");
+                : $"Couldn't download the {what.Split(" (")[0]}. Check the internet connection and switch it on again.");
             return false;
         }
         finally
@@ -654,45 +739,87 @@ internal sealed class AssistantHost : IDisposable
         }
     }
 
-    /// <summary>Downloads (first time) and loads the Hindi + English model in the background, so commands keep working meanwhile.</summary>
+    /// <summary>
+    /// Downloads (first time) and loads the Hindi + English model(s) in the background, so commands keep working
+    /// meanwhile. The accurate mode loads both: the fast model drives the live preview.
+    /// </summary>
     private void EnsureHinglishLoading()
     {
         lock (_hinglishGate)
         {
             if (_hinglish is null && _hinglishLoad is null)
             {
-                _hinglishLoad = Task.Run(LoadHinglishAsync);
+                _hinglishLoad = Task.Run(() => LoadHinglishAsync(accurate: false));
+            }
+
+            if (_hinglishAccurateMode && _hinglishAccurate is null && _hinglishAccurateLoad is null)
+            {
+                _accurateLoadCts?.Dispose();
+                _accurateLoadCts = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
+                var token = _accurateLoadCts.Token;
+                _hinglishAccurateLoad = Task.Run(() => LoadHinglishAsync(accurate: true, token));
             }
         }
     }
 
-    private async Task LoadHinglishAsync()
+    private async Task LoadHinglishAsync(bool accurate, CancellationToken cancellationToken = default)
     {
+        var file = accurate ? _settings.HinglishAccurateModelFile : _settings.HinglishModelFile;
+        var what = accurate ? "accurate Hindi + English model (about 830 MB" : "Hindi + English model (about 80 MB";
+        var token = cancellationToken.CanBeCanceled ? cancellationToken : _shutdown.Token;
         try
         {
-            if (!await EnsureModelAsync(_settings.HinglishModelFile, firstRun: false).ConfigureAwait(false))
+            if (!await EnsureModelAsync(file, firstRun: false, what, token).ConfigureAwait(false))
             {
                 return;
             }
 
             var started = DateTime.UtcNow;
-            var recognizer = new WhisperRecognizer(Path.Combine(AppPaths.ModelsDir, _settings.HinglishModelFile), new RecognizerOptions
+            var recognizer = new WhisperRecognizer(Path.Combine(AppPaths.ModelsDir, file), new RecognizerOptions
             {
                 Threads = _settings.Threads,
                 AudioContextSize = _settings.AudioContextSize,
             });
-            await recognizer.TranscribeAsync(new float[SampleRate], _shutdown.Token).ConfigureAwait(false);
-            _hinglish = recognizer;
-            Log.Info($"hinglish model loaded in {(DateTime.UtcNow - started).TotalMilliseconds:F0} ms");
-            if (_hinglishDictation)
+            try
             {
-                Report(StatusKind.Success, "Hindi + English dictation is ready (Hindi is typed in Roman letters).");
+                // Not cancellable: Whisper keeps running natively after a cancel, so it must finish before Dispose.
+                await recognizer.TranscribeAsync(new float[SampleRate], CancellationToken.None).ConfigureAwait(false);
+            }
+            catch
+            {
+                recognizer.Dispose();
+                throw;
+            }
+
+            if (token.IsCancellationRequested || (accurate && !_hinglishAccurateMode))
+            {
+                // Switched to another mode (or exiting) while it loaded.
+                recognizer.Dispose();
+                Log.Info($"{(accurate ? "hinglish-accurate" : "hinglish")} model no longer needed after loading; unloaded");
+                return;
+            }
+
+            if (accurate)
+            {
+                _hinglishAccurate = recognizer;
+            }
+            else
+            {
+                _hinglish = recognizer;
+            }
+
+            Log.Info($"{(accurate ? "hinglish-accurate" : "hinglish")} model loaded in {(DateTime.UtcNow - started).TotalMilliseconds:F0} ms");
+            if (_hinglishDictation && accurate == _hinglishAccurateMode)
+            {
+                Report(StatusKind.Success, accurate
+                    ? "Accurate Hindi + English dictation is ready (a few seconds per phrase; Hindi is typed in Roman letters)."
+                    : "Hindi + English dictation is ready (Hindi is typed in Roman letters).");
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            Log.Error($"hinglish model load failed: {ex.GetType().Name}");
-            Report(StatusKind.Error, "Couldn't load the Hindi + English model. Delete it from the models folder and switch it on again.");
+            Log.Error($"{(accurate ? "hinglish-accurate" : "hinglish")} model load failed: {ex.GetType().Name}");
+            Report(StatusKind.Error, $"Couldn't load the {what.Split(" (")[0]}. Delete it from the models folder and switch it on again.");
         }
         catch (OperationCanceledException)
         {
@@ -702,7 +829,14 @@ internal sealed class AssistantHost : IDisposable
             lock (_hinglishGate)
             {
                 // Allow another attempt after a failure.
-                _hinglishLoad = null;
+                if (accurate)
+                {
+                    _hinglishAccurateLoad = null;
+                }
+                else
+                {
+                    _hinglishLoad = null;
+                }
             }
         }
     }
@@ -837,7 +971,7 @@ internal sealed class AssistantHost : IDisposable
         }
 
         // While typing in Hindi + English, commands are still recognized in English; text to type comes from the Hindi model.
-        var hinglish = _hinglishDictation && _controller.Mode == InteractionMode.Dictation ? _hinglish : null;
+        var hinglish = _hinglishDictation && _controller.Mode == InteractionMode.Dictation ? HinglishForTyping() : null;
         if (hinglish is null && audioMs < 2500 && KnownHallucinations.Contains(TranscriptText.Normalize(result.Text)))
         {
             return;
