@@ -10,7 +10,8 @@ limits. **Verify the starred (\*) items with a spike before committing to a desi
 | Core behaviour: parser, matcher, resolver, state machine, formatter, segmenter, live preview | C# `src/VoiceAssistant.Core` (no OS calls) | Re-implement in the platform language (Swift / Kotlin), **porting the unit tests with the same inputs and expected outputs**. Alternatively share the C# core via .NET on macOS/Android if the app shell allows it |
 | Speech | whisper.cpp via Whisper.net; Silero via whisper.cpp | whisper.cpp directly (C API): Metal / Core ML on Apple, NDK + optional GPU on Android; same models and SHA-256s |
 | Platform layer | `IDesktop` (`src/VoiceAssistant.Core/IDesktop.cs`) implemented with Win32 + UI Automation | Same operations with the platform's accessibility/input APIs |
-| Shell | WPF tray app, pill window, marker overlay | Menu-bar app (macOS), foreground service + overlay (Android), app + keyboard (iOS) |
+| Idea board: notes, lists, reminder times, voice grammar, store | C# `src/VoiceAssistant.Board` (no OS calls) | Port with its tests (`tests/VoiceAssistant.Board.Tests`), like the core. Reminder pop-ups become system notifications (`UNUserNotificationCenter`, Android `AlarmManager` + notification) |
+| Shell | WPF app window (Home, Idea board, Settings, Help) + tray, pill window, marker overlay, reminder cards | Menu-bar app (macOS), foreground service + overlay (Android), app + keyboard (iOS) |
 
 ## Capability map
 

@@ -2,7 +2,7 @@
 
 # Windows Voice Assistant
 
-Talk to your Windows PC: dictate into any app like [Wispr Flow](https://wisprflow.ai), and control apps hands-free with “Hey Jarvis”.
+Talk to your Windows PC: dictate into any app like [Wispr Flow](https://wisprflow.ai), control apps hands-free with “Hey Jarvis”, and capture ideas, to-dos and reminders on a voice **idea board**.
 
 Everything runs **on this PC**. Speech is transcribed locally with [whisper.cpp](https://github.com/ggerganov/whisper.cpp) (via [Whisper.net](https://github.com/sandrohanea/whisper.net)) and filtered with the Silero voice-activity model; audio and transcripts are never written to disk or sent anywhere.
 
@@ -16,11 +16,13 @@ cd windows-voice-assistant
 powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
 ```
 
-The installer builds a self-contained app, downloads the speech and voice-activity models once (SHA-256 verified), installs to `%LOCALAPPDATA%\Programs\VoiceAssistant`, adds a **Voice Assistant** Start menu shortcut, and starts it. Look for the purple microphone in the system tray and the status pill at the bottom of the screen.
+The installer builds a self-contained app, downloads the speech and voice-activity models once (SHA-256 verified), installs to `%LOCALAPPDATA%\Programs\VoiceAssistant`, adds a **Voice Assistant** Start menu shortcut, and starts it.
+
+The **Voice Assistant window** opens with four pages: **Home** (status, pause/start, dictation language, upcoming reminders), **Idea board**, **Settings** and **What you can say**. Closing the window keeps the assistant running in the system tray (the purple microphone) with its status pill at the bottom of the screen. Click the tray icon or start the app again to reopen the window; tray › **Exit** quits.
 
 | Option | Effect |
 |---|---|
-| `-StartAtSignIn` | Start automatically when you sign in (also a tray menu toggle) |
+| `-StartAtSignIn` | Start in the tray when you sign in, window closed (also in Settings and the tray menu) |
 | `-Model ggml-base.en-q8_0.bin` | Faster, less accurate model (default: `ggml-small.en-q8_0.bin`) |
 | `-NoLaunch` | Install without starting |
 
@@ -75,7 +77,7 @@ The assistant waits for **“Hey Jarvis”**. After the wake word, commands work
 
 Speak naturally — polite padding is understood: *“Hey Jarvis, can you open Notepad?”*, *“Could you please open Chrome for me”*, *“I want to start typing”*, *“fire up Chrome”*. Misheard app names are tolerated (“notpad”, “crome”, “outlook” → “Outlook (new)”).
 
-**It learns from you:** if it doesn't understand something and you rephrase it within 30 seconds, it remembers the first phrase for next time (*“Got it — next time ‘get notepad going’ will do that too.”*). It only learns when both phrases share a meaningful word (like the app name), and prefers the apps you open most when a name is ambiguous. Learned phrases stay on this PC in `%APPDATA%\VoiceAssistant\learned.json`; tray → *Forget what I've learned* clears them.
+**It learns from you:** if it doesn't understand something and you rephrase it within 30 seconds, it remembers the first phrase for next time (*“Got it — next time ‘get notepad going’ will do that too.”*). It only learns when both phrases share a meaningful word (like the app name), and prefers the apps you open most when a name is ambiguous. Learned phrases stay on this PC in `%APPDATA%\VoiceAssistant\learned.json`; Settings › *Forget what I've learned* clears them.
 
 | Say | Does |
 |---|---|
@@ -116,7 +118,7 @@ Speak naturally — polite padding is understood: *“Hey Jarvis, can you open N
 "Hey Jarvis, open GitHub Copilot and start typing"  →  "Fix the failing test"  →  "Send"
 ```
 
-**Status pill:** light blue = waiting for “Hey Jarvis”, blue = listening for a command, red = typing/dictating, grey = paused. `Ctrl+Alt+Space` or a left-click on the tray icon pauses/resumes listening; push-to-talk works even while paused. Click **–** on the pill to hide it while idle: it then appears only for “Hey Jarvis”, `Ctrl+Win`, typing, and messages. Tray menu › **Always show status pill** brings it back.
+**Status pill:** light blue = waiting for “Hey Jarvis”, blue = listening for a command, red = typing/dictating, grey = paused. `Ctrl+Alt+Space` (or the Home page's Pause button) pauses/resumes listening; push-to-talk works even while paused. Click **–** on the pill to hide it while idle: it then appears only for “Hey Jarvis”, `Ctrl+Win`, typing, and messages. Tray menu › **Always show status pill** brings it back.
 
 ## 3. Navigate by voice: tabs, buttons, text boxes
 
@@ -143,6 +145,26 @@ Every click is outlined briefly so you can see what happened. It works with apps
 "Switch to GitHub Copilot"  →  "Click New on the left"  →  "Start typing"  →  "Fix the login test"  →  "Send"
 ```
 
+## 4. Idea board — ideas, brainstorm, to-do, reminders
+
+Say it and it's filed as a sticky note in the app window (**Idea board** page), in one of four lists:
+
+| Say | Result |
+|---|---|
+| Hold `Ctrl`+`Win`: “Add to my ideas, a voice game for kids” | Filed under Ideas (not typed) |
+| “Add renew passport to my to-do list” · “Add to brainstorming, pricing ideas” | To-do · Brainstorm |
+| “Hey Jarvis, remind me to call mom tomorrow at 5 pm” | A reminder that pops up at 5 pm tomorrow |
+| “Hey Jarvis, note down that the demo needs subtitles” | Ideas |
+| “Hey Jarvis, show my reminders” / “…show my board” | Opens the window on that list / the whole board |
+| “Hey Jarvis, mark renew passport as done” / “…tick off renew passport” | Ticks it off |
+
+- Requests that **name a list** (“add … to my to-do list”) work with push-to-talk; looser ones (“remind me…”, “note down…”) need “Hey Jarvis”, so dictating “please remind me to send the slides” to a colleague still types it.
+- Reminder times: “in 10 minutes”, “at 5:30 pm”, “tonight”, “tomorrow morning”, “on Friday at 10 am”, “next Monday”. When one is due, a card appears in the bottom-right corner (without taking keyboard focus) with **Done**, **Snooze 10 min** and **Open board**. Reminders that came due while the app was closed appear when it starts.
+- In the window: type a note in a column's box and press Enter; tick the checkbox when done; double-click to edit; right-click to move, snooze or delete.
+- Notes are saved in `%APPDATA%\VoiceAssistant\board.json`, on this PC only.
+
+The board lives in its own project (`src/VoiceAssistant.Board`, no Windows code) so it can become a separate app later. Full behaviour: [docs/specs/idea-board.md](docs/specs/idea-board.md).
+
 ## Safety and privacy
 
 - **Bound to one window.** Voice dictation goes only to the window where you said “start typing”. If focus moves, nothing is typed or sent; the text is kept in memory (tray → *Copy text that wasn't typed*).
@@ -155,7 +177,7 @@ Every click is outlined briefly so you can see what happened. It works with apps
 
 ## Settings
 
-`%APPDATA%\VoiceAssistant\settings.json` (tray → *Open settings file*; restart to apply):
+Most settings are on the window's **Settings** page (*Save and restart* applies them). Everything is stored in `%APPDATA%\VoiceAssistant\settings.json` (Settings › *Open settings file* for the rest, such as `apps`; restart to apply):
 
 | Setting | Default | |
 |---|---|---|
@@ -194,9 +216,11 @@ Microphone ─┬─ (Ctrl+Win held) ─────────────► 
 | Project | Purpose |
 |---|---|
 | `src/VoiceAssistant.Core` | Parser, wake word, formatter, segmenter, controller — platform-independent, unit-tested |
+| `src/VoiceAssistant.Board` | Idea board: notes, lists, reminder times, voice grammar, JSON store — platform-independent, unit-tested |
 | `src/VoiceAssistant.Speech` | Whisper and Silero wrappers |
-| `src/VoiceAssistant.App` | Tray app, overlay, microphone, key hook, clipboard paste, UI Automation |
+| `src/VoiceAssistant.App` | App window (Home, Idea board, Settings, Help), tray, reminder pop-ups, overlay, microphone, key hook, clipboard paste, UI Automation |
 | `tests/VoiceAssistant.Core.Tests` | xUnit tests (the executable form of [docs/specs](docs/specs/README.md)) |
+| `tests/VoiceAssistant.Board.Tests` | xUnit tests for the idea board |
 | `tests/NavigationLab` | Test pages and a self-test script for voice navigation on real browsers |
 | `tools/SpeechBench` | Benchmarks, live microphone diagnostics, noisy-room replay |
 | `tools/ModelConvert` | Converts Hugging Face Whisper checkpoints to ggml (how the Hindi + English model is built) |
@@ -204,7 +228,7 @@ Microphone ─┬─ (Ctrl+Win held) ─────────────► 
 ## Develop
 
 ```powershell
-dotnet test tests/VoiceAssistant.Core.Tests
+dotnet test VoiceAssistant.slnx
 dotnet build src/VoiceAssistant.App -r win-arm64        # or win-x64
 
 # Desktop self-test: runs scripted transcripts against real apps (no microphone)
@@ -218,7 +242,7 @@ dotnet run --project tools/SpeechBench -c Release -r win-arm64 -- --mix noise.wa
 .\tests\NavigationLab\run.ps1 -Exe src\VoiceAssistant.App\bin\Release\net10.0-windows\win-arm64\VoiceAssistant.exe
 ```
 
-**Specifications** for every platform (Windows now; macOS, Android, iOS next) are in **[docs/specs](docs/specs/README.md)**: product, dictation, voice commands, navigation, speech pipeline, safety and privacy, a porting guide, and acceptance tests. Change the spec in the same pull request as the behaviour.
+**Specifications** for every platform (Windows now; macOS, Android, iOS next) are in **[docs/specs](docs/specs/README.md)**: product, dictation, voice commands, navigation, idea board, speech pipeline, safety and privacy, a porting guide, and acceptance tests. Change the spec in the same pull request as the behaviour.
 
 Regenerate the logo with `powershell -File assets\make-logo.ps1`. See the **[step-by-step guide](docs/GUIDE.md)** (install, use, share, develop, contribute), [docs/BENCHMARKS.md](docs/BENCHMARKS.md), and the design notes in [docs/design](docs/design).
 

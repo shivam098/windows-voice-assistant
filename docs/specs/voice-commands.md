@@ -109,6 +109,11 @@ Platforms map these to their own shortcuts (macOS: Cmd instead of Ctrl, Cmd+[ / 
 | “Hey Jarvis” | Wake (tone); Command mode for 30 s |
 | “pause listening”, “stop listening”, “go to sleep”, “be quiet” | Microphone off |
 
+### Idea board
+
+Notes, to-dos and reminders (“add to my ideas, …”, “remind me to … at 5 pm”, “show my reminders”, “mark … as done”).
+Checked **before** the other commands. Full grammar: [idea-board.md](idea-board.md).
+
 ## Feedback
 
 Every command reports success or a reason on the pill. Unknown phrases in Command mode: “Not a command I know. Say it

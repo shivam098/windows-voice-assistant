@@ -79,6 +79,12 @@ public sealed partial class InteractionController
     /// <summary>Content-free diagnostics (command kinds and outcomes, never transcripts) for the log.</summary>
     public event Action<string>? Trace;
 
+    /// <summary>The idea board voice commands add to; null turns them off.</summary>
+    public VoiceAssistant.Board.IBoard? Board { get; set; }
+
+    /// <summary>“show my ideas”: the host opens the board (on that list, or the whole board for null).</summary>
+    public event Action<VoiceAssistant.Board.BoardList?>? ShowBoardRequested;
+
     public InteractionMode Mode { get; private set; } = InteractionMode.Paused;
 
     /// <summary>Dictated text that could not be typed (focus moved, unverifiable field). Kept only in memory.</summary>
@@ -297,6 +303,13 @@ public sealed partial class InteractionController
     /// </summary>
     public void InsertDictation(string transcript)
     {
+        // Push-to-talk that names a list ("add to my ideas …") is filed on the board instead of typed.
+        if (Board is not null && VoiceAssistant.Board.BoardGrammar.Parse(TranscriptText.Clean(transcript), BoardNow(), explicitOnly: true) is { Action: VoiceAssistant.Board.BoardAction.Add } intent)
+        {
+            ExecuteBoard(intent, TranscriptText.Clean(transcript));
+            return;
+        }
+
         var formatted = _formatter.Format(transcript);
         if (formatted.Length == 0)
         {
@@ -470,6 +483,9 @@ public sealed partial class InteractionController
             case CommandKind.ReplaceText:
                 return EditText(command.Edit ?? new TextEdit(), heard);
 
+            case CommandKind.Board:
+                return command.Board is { } intent && ExecuteBoard(intent, heard);
+
             default:
                 return false;
         }
@@ -594,6 +610,68 @@ public sealed partial class InteractionController
     {
         var trimmed = TextEditing.NormalizeNewLines(text).TrimEnd();
         return trimmed.Length == 0 ? null : trimmed[Math.Max(0, trimmed.Length - 40)..];
+    }
+
+    private DateTimeOffset BoardNow() => _parser.BoardClock();
+
+    /// <summary>Adds to the idea board, opens it, or ticks an item off; says what happened.</summary>
+    private bool ExecuteBoard(VoiceAssistant.Board.BoardIntent intent, string heard)
+    {
+        if (Board is null)
+        {
+            Report(StatusKind.Warning, "The idea board isn't available.", heard);
+            return false;
+        }
+
+        switch (intent.Action)
+        {
+            case VoiceAssistant.Board.BoardAction.Add:
+                var list = intent.List ?? VoiceAssistant.Board.BoardList.Ideas;
+                var item = Board.Add(list, intent.Text, intent.Due);
+                Trace?.Invoke($"board add {list}{(item.Due is null ? string.Empty : " with time")}");
+                Report(StatusKind.Success, item.Due is { } due
+                    ? $"Reminder {(due > BoardNow() && due - BoardNow() < TimeSpan.FromHours(1) ? string.Empty : "for ")}{DescribeDue(due, BoardNow())}: “{Short(item.Text, 50)}”."
+                    : $"Added to {ListName(list)}: “{Short(item.Text, 50)}”.", heard);
+                return true;
+
+            case VoiceAssistant.Board.BoardAction.Show:
+                ShowBoardRequested?.Invoke(intent.List);
+                Report(StatusKind.Info, intent.List is { } shown ? $"Opening {ListName(shown)}." : "Opening your idea board.", heard);
+                return true;
+
+            default:
+                var done = Board.CompleteMatching(intent.Text, intent.List);
+                Report(
+                    done is null ? StatusKind.Warning : StatusKind.Success,
+                    done is null ? $"I couldn't find “{Short(intent.Text, 40)}” on your board." : $"Done: “{Short(done.Text, 50)}”.",
+                    heard);
+                return done is not null;
+        }
+    }
+
+    private static string ListName(VoiceAssistant.Board.BoardList list) => list switch
+    {
+        VoiceAssistant.Board.BoardList.Ideas => "Ideas",
+        VoiceAssistant.Board.BoardList.Brainstorm => "Brainstorm",
+        VoiceAssistant.Board.BoardList.Todo => "To-do",
+        _ => "Reminders",
+    };
+
+    /// <summary>“today 5:00 PM”, “tomorrow 9:00 AM”, “Fri 13 Nov 10:00 AM”, “in 10 min”.</summary>
+    public static string DescribeDue(DateTimeOffset due, DateTimeOffset now)
+    {
+        var time = due.ToString("h:mm tt", CultureInfo.InvariantCulture);
+        if (due > now && due - now < TimeSpan.FromHours(1))
+        {
+            return $"in {Math.Max(1, (int)Math.Round((due - now).TotalMinutes))} min";
+        }
+
+        return (due.Date - now.Date).Days switch
+        {
+            0 => $"today {time}",
+            1 => $"tomorrow {time}",
+            _ => due.ToString("ddd d MMM ", CultureInfo.InvariantCulture) + time,
+        };
     }
 
     private static string DescribeEdit(TextEdit edit)

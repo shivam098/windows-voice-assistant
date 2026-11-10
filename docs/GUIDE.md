@@ -16,8 +16,8 @@ Everything you need to install, use, share, and change the app. For the full com
    powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
    ```
    It installs the .NET 10 SDK into your user profile if missing, builds the app for your PC (x64 or ARM64), downloads and verifies the speech models (~265 MB), installs to `%LOCALAPPDATA%\Programs\VoiceAssistant`, adds a Start menu shortcut, and starts it.
-3. Look for the **purple microphone** in the system tray and the status pill at the bottom of the screen. Click **–** on the pill to hide it until it's needed (it reappears for “Hey Jarvis”, `Ctrl` + `Win`, and messages); tray menu › **Always show status pill** brings it back.
-4. Optional: tray icon → **Start when I sign in** (or install with `-StartAtSignIn`).
+3. The **Voice Assistant** window opens (Home, Idea board, Settings, What you can say). Closing it keeps the assistant running: look for the **purple microphone** in the system tray (click it to reopen the window) and the status pill at the bottom of the screen. Click **–** on the pill to hide it until it's needed (it reappears for “Hey Jarvis”, `Ctrl` + `Win`, and messages); tray menu › **Always show status pill** brings it back.
+4. Optional: Settings (or the tray menu) → **Start when I sign in** starts it in the tray, window closed (or install with `-StartAtSignIn`).
 
 To update later: `git pull`, then run `install.ps1` again (it replaces the old version and keeps your settings, models, and learned phrases).
 
@@ -48,9 +48,9 @@ Say punctuation (“comma”, “question mark”, “new line”); “um/uh” 
    ```
 3. While typing (red pill), pause briefly before a command: “send”, “scratch that”, “clear box”, “new line”, “stop typing”.
    To fix part of what you typed: “delete the last two words”, “delete the last sentence”, “delete the last line”, “delete the word very”, “replace the word Monday with Tuesday”.
-4. Pause the microphone with `Ctrl` + `Alt` + `Space`, a left-click on the tray icon, or “Hey Jarvis, pause listening”.
+4. Pause the microphone with `Ctrl` + `Alt` + `Space`, the **Pause** button on the Home page, or “Hey Jarvis, pause listening”.
 
-Speak naturally — “can you please open Notepad for me” works. If it doesn't understand something, say it another way within 30 seconds and it remembers the first phrase next time (tray → **Forget what I've learned** to reset).
+Speak naturally — “can you please open Notepad for me” works. If it doesn't understand something, say it another way within 30 seconds and it remembers the first phrase next time (Settings › **Forget what I've learned** to reset).
 
 ### Navigate: tabs, buttons, text boxes
 
@@ -60,6 +60,15 @@ Speak naturally — “can you please open Notepad for me” works. If it doesn'
 4. **Show numbers:** “show numbers”, then say a number to click it; “hide numbers”.
 5. Destructive buttons (delete, merge, sign out, pay…) wait for you to say **“yes”**.
 6. The pill shows where you are: **📍 Google Chrome › YouTube › Search**.
+
+### Capture ideas, to-dos and reminders
+
+1. Hold `Ctrl` + `Win` and say **“Add to my ideas, a voice game for kids”**. It's filed on the window's **Idea board** page instead of being typed. Name any list: ideas, brainstorm(ing), to-do, reminders (“add renew passport to my to-do list”).
+2. **“Hey Jarvis, remind me to call mom tomorrow at 5 pm.”** At 5 pm a card pops up in the bottom-right corner: **Done**, **Snooze 10 min**, or **Open board**. It doesn't take keyboard focus, so it won't interrupt your typing.
+3. **“Hey Jarvis, note down that the demo needs subtitles”** adds to Ideas; **“Hey Jarvis, show my reminders”** opens the board; **“Hey Jarvis, mark renew passport as done”** ticks it off.
+4. In the window you can also type a note in a column's box (Enter adds it), tick notes off, double-click to edit, and right-click to move, snooze or delete.
+
+Full grammar and time phrases: [specs/idea-board.md](specs/idea-board.md).
 
 ---
 
@@ -135,7 +144,7 @@ Not supported: 32-bit Windows.
 | Symptom | Fix |
 |---|---|
 | Pill says “Say ‘Hey Jarvis’ first” | The 30-second command window ended — start with “Hey Jarvis” again |
-| “Not a command I know” | Rephrase; it learns the first phrase. Check the tray → *Voice commands…* list |
+| “Not a command I know” | Rephrase; it learns the first phrase. Check the window's *What you can say* page |
 | Nothing happens when speaking | Is the pill grey (paused)? Press `Ctrl` + `Alt` + `Space`. Check microphone privacy settings |
 | Text appears in the wrong place | Click into the text box, then say “start typing” (or use `Ctrl` + `Win`) |
 | Won't type into an app | Apps running as administrator and password fields are refused by design |

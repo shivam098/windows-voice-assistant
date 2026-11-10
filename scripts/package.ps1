@@ -123,7 +123,7 @@ START
      click "More info" -> "Run anyway".
   3. $(if ($IncludeModels) { 'It starts listening in a few seconds.' } else { 'First run downloads the speech model (~265 MB, one time). Watch the pill at the bottom of the screen.' })
   4. Allow microphone access if Windows asks (Settings > Privacy & security > Microphone > "Let desktop apps access your microphone").
-  Look for the purple microphone icon in the system tray (bottom-right, maybe under the ^ arrow).
+  The Voice Assistant window opens. Closing it keeps the assistant running: look for the purple microphone icon in the system tray (bottom-right, maybe under the ^ arrow).
 
 DICTATE ANYWHERE
   Hold Ctrl+Win, speak, release   -> words show live as you speak, then are typed where your cursor is
@@ -138,11 +138,16 @@ VOICE COMMANDS (start with "Hey Jarvis")
   "Search for pizza near me", "New tab", "Go back", "Next page", "Go up" (Explorer), "Press enter", "Pause listening"
   "Go to the first tab", "Go to the YouTube tab", "Click New on the left", "Start typing in YouTube"
   "Show numbers" -> say a number to click it. Delete / sign out / pay ask you to say "yes" first.
-  Right-click the tray icon -> "Voice commands..." for the full list.
+  The window's "What you can say" page has the full list.
+
+IDEA BOARD (the window's Idea board page)
+  Hold Ctrl+Win: "Add to my ideas, a voice game for kids"  ·  "Add renew passport to my to-do list"
+  "Hey Jarvis, remind me to call mom tomorrow at 5 pm"  ->  a reminder pops up then
+  "Hey Jarvis, show my reminders"  ·  "Hey Jarvis, mark renew passport as done"
 
 PAUSE / QUIT
-  Ctrl+Alt+Space or left-click the tray icon pauses the microphone. Right-click -> Exit quits.
-  Tray -> "Start when I sign in" to launch it automatically.
+  Ctrl+Alt+Space pauses the microphone. Click the tray icon to open the window; right-click it -> Exit quits.
+  Settings (or the tray menu) -> "Start when I sign in" starts it in the tray when you sign in.
 
 PRIVACY
   Speech is transcribed on this PC; audio and text are never uploaded or saved to disk.

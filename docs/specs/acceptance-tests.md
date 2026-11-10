@@ -61,6 +61,26 @@ navigation scenarios run with `tests/NavigationLab/run.ps1`.
 | N16 | In the browser, after opening two pages: “go back”, “go to the next page”, “go to the previous page” | Back, forward, back (`tests/NavigationLab`) |
 | N17 | File Explorer in a sub-folder: “go up one level”, “go back”, “go forward” | Parent, sub-folder, parent (`tests/NavigationLab/run-explorer.ps1`) |
 
+## App window and idea board
+
+| # | Steps | Expected |
+|---|---|---|
+| B1 | Start the app from the Start menu | Window opens on Home; tray icon present |
+| B2 | Close the window; say “Hey Jarvis, open Notepad” | Notepad opens (the assistant kept running); a one-time tray balloon explains it |
+| B3 | Start the app again from the Start menu while it runs | The running copy's window comes to the front; no second copy, no message box |
+| B4 | Sign out and in with “Start when I sign in” on | Tray icon only; no window |
+| B5 | Notepad focused; hold push-to-talk: “add to my ideas, a voice game for kids” | Nothing typed in Notepad; the note is under Ideas; pill confirms |
+| B6 | Hold push-to-talk: “please remind me to send the slides” | Typed as dictation, not filed |
+| B7 | “Hey Jarvis, remind me to stretch in 1 minute” | Reminders shows it with a time; after ~1 min a card appears bottom-right with a sound; typing in another app isn't interrupted |
+| B8 | On the card, press Snooze 10 min; then Done when it returns | It comes back 10 min later; Done ticks it off |
+| B9 | “Hey Jarvis, show my reminders” | Window opens on the board with the Reminders column outlined |
+| B10 | “Hey Jarvis, mark voice game as done” | That note is ticked off |
+| B11 | “Hey Jarvis, tick the checkbox” on a page with one | Not a board request (no “couldn't find” warning on the board) |
+| B12 | Add a reminder for 1 minute, exit, wait 2 minutes, start the app | The missed reminder pops up at start |
+| B13 | Settings: change “Pause that ends a phrase” to 1500, Save and restart | App restarts; the value is in `settings.json` |
+
+B5–B6 and B10–B11 are also covered by unit tests (`tests/VoiceAssistant.Board.Tests`, `BoardVoiceTests`).
+
 The Windows runner uses `stoponfail`: if the test window isn't in front (Windows blocks background apps from taking
 focus while someone is typing), the run stops instead of typing elsewhere. Run it while the PC is idle.
 
