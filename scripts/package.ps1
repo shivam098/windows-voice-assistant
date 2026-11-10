@@ -135,7 +135,7 @@ Click - on the status pill to hide it until it's needed (tray menu > Always show
 VOICE COMMANDS (start with "Hey Jarvis")
   "Hey Jarvis, open Notepad"  ->  "Start typing"  ->  speak  ->  "Stop typing"
   "Hey Jarvis, open Chrome"   ->  "Go to the search box"  ->  "weather in Bangalore"  ->  "Search"
-  "Search for pizza near me", "New tab", "Go back", "Press enter", "Pause listening"
+  "Search for pizza near me", "New tab", "Go back", "Next page", "Go up" (Explorer), "Press enter", "Pause listening"
   "Go to the first tab", "Go to the YouTube tab", "Click New on the left", "Start typing in YouTube"
   "Show numbers" -> say a number to click it. Delete / sign out / pay ask you to say "yes" first.
   Right-click the tray icon -> "Voice commands..." for the full list.

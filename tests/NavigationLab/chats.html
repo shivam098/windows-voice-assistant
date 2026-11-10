@@ -34,9 +34,11 @@
     row.innerHTML = `<div role="gridcell" style="width:100%"><span class="name">${prefix ? `<span style="position:absolute;left:-9999px">${prefix}</span>` : ''}${name}</span></div><span class="time" style="position:absolute;left:230px;top:12px;width:120px;text-align:center">${time}</span><div class="preview">${preview}</div>`;
     row.style.flexDirection = 'column';
     // Like WhatsApp: opens on a real mouse click only (a programmatic "select" just highlights).
-    row.addEventListener('click', () => { document.title = 'Lab Chats - opened ' + name; });
+    row.addEventListener('click', () => { history.pushState({ name }, '', '#' + encodeURIComponent(name)); document.title = 'Lab Chats - opened ' + name; });
     list.appendChild(row);
   }
+  // Each opened chat is a history entry, so "go back" / "next page" (Alt+Left / Alt+Right) can be checked.
+  window.addEventListener('popstate', e => { document.title = 'Lab Chats - ' + (e.state ? 'opened ' + e.state.name : 'list'); });
 </script>
 </body>
 </html>

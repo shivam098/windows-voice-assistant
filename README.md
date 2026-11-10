@@ -86,7 +86,9 @@ Speak naturally — polite padding is understood: *“Hey Jarvis, can you open N
 | “Go to the search box” | Browsers: the address/search bar. Other apps: the box labelled “search”. Then dictate your query |
 | “Go to the address bar” | Browsers |
 | “Search for weather in Bangalore” | Focuses search, types, presses Enter |
-| “New tab”, “Close tab”, “Go back”, “Refresh”, “Scroll down” | Browser/app shortcuts |
+| “New tab”, “Close tab”, “Refresh”, “Scroll down” | Browser/app shortcuts |
+| “Go back” / “previous page”, “go forward” / “next page” | Back and forward in the browser or File Explorer (Alt+Left / Alt+Right). For a page's own “Next” link (search results), say “click next” |
+| “Go up” / “parent folder” | File Explorer: the folder that contains this one (Alt+Up) |
 | “Copy”, “Paste”, “Cut”, “Undo”, “Redo”, “Select all”, “Save” | Editing shortcuts |
 | “Press enter / tab / escape / up / down / page down …” | Any of those keys |
 | “Pause listening” | Turns the microphone off |

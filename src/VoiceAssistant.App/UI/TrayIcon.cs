@@ -150,7 +150,8 @@ internal sealed class TrayIcon : IDisposable
           “Start typing”  (Notepad: document; Copilot: message box)
           “Go to the search box” / “Go to the address bar”
           “Search for weather in Bangalore”
-          “New tab”, “Go back”, “Refresh”, “Copy”, “Paste”, “Undo”, “Save”
+          “New tab”, “Refresh”, “Copy”, “Paste”, “Undo”, “Save”
+          “Go back” / “Previous page” · “Go forward” / “Next page” · “Go up” (Explorer)
           “Press enter / tab / escape / down …”
           “Pause listening”
 

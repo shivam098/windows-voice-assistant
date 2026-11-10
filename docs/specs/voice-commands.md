@@ -68,7 +68,11 @@ Ties go to configured apps, then to the clearly most-used app; otherwise “Whic
 | “press / hit / tap enter, tab, escape, backspace, delete, space, up, down, left, right, page up/down, home, end, shift tab” | That key |
 | “select all”, “copy”, “paste”, “cut”, “undo”, “redo”, “save” | Ctrl+A/C/V/X/Z/Y/S |
 | “new tab”, “close tab”, “next tab”, “previous tab” | Ctrl+T / Ctrl+W / Ctrl+Tab / Ctrl+Shift+Tab |
-| “go back”, “go forward”, “refresh”, “scroll down/up” | Alt+Left / Alt+Right / F5 / Page Down/Up |
+| “go back”, “previous page”, “go to the previous page”, “go back one page”, “take me back” | Alt+Left (browser and File Explorer back) |
+| “go forward”, “next page”, “go to the next page” | Alt+Right (forward). A page's own “Next” link is “click next” |
+| “go up”, “go up one level”, “parent folder”, “go to the parent folder” | Alt+Up (File Explorer: parent folder) |
+| “refresh”, “scroll down/up” | F5 / Page Down/Up |
+| *Note* | These exact phrases win over “go to *app*”: “go to the next page” is never treated as an app called “next page”. |
 
 Platforms map these to their own shortcuts (macOS: Cmd instead of Ctrl, Cmd+[ / Cmd+] for back/forward, Cmd+R).
 

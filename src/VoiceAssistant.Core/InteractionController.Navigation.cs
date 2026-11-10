@@ -369,7 +369,7 @@ public sealed partial class InteractionController
         box.Name.Contains("address", StringComparison.OrdinalIgnoreCase) || box.Name.Contains("URL", StringComparison.Ordinal);
 
     private static readonly HashSet<string> TabChangingChords = new(StringComparer.OrdinalIgnoreCase)
-        { "Ctrl+T", "Ctrl+W", "Ctrl+Tab", "Ctrl+Shift+Tab", "Alt+Left", "Alt+Right", "F5" };
+        { "Ctrl+T", "Ctrl+W", "Ctrl+Tab", "Ctrl+Shift+Tab", "Alt+Left", "Alt+Right", "Alt+Up", "F5" };
 
     /// <summary>Commands after which the old typing target may show different content (another tab, page or app).</summary>
     private static bool MovesAway(VoiceCommand command) => command.Kind switch

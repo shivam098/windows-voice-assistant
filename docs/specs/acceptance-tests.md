@@ -57,6 +57,8 @@ navigation scenarios run with `tests/NavigationLab/run.ps1`.
 | N13 | While typing: “Hey Jarvis, next tab”; then “send” | Tab switches; “send” does nothing (“Say ‘start typing’ first”) |
 | N14 | “click delete account”; say something unrelated; “yes” | Nothing is clicked |
 | N15 | Standby (no wake word): say “yes”, “no”, “two” | No reaction at all |
+| N16 | In the browser, after opening two pages: “go back”, “go to the next page”, “go to the previous page” | Back, forward, back (`tests/NavigationLab`) |
+| N17 | File Explorer in a sub-folder: “go up one level”, “go back”, “go forward” | Parent, sub-folder, parent (`tests/NavigationLab/run-explorer.ps1`) |
 
 The Windows runner uses `stoponfail`: if the test window isn't in front (Windows blocks background apps from taking
 focus while someone is typing), the run stops instead of typing elsewhere. Run it while the PC is idle.
