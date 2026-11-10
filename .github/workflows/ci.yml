@@ -20,6 +20,8 @@ jobs:
 
       - name: Unit tests
         run: dotnet test tests/VoiceAssistant.Core.Tests -c Release
+      - name: Idea board tests
+        run: dotnet test tests/VoiceAssistant.Board.Tests -c Release
 
       - name: Build app (x64)
         run: dotnet build src/VoiceAssistant.App -c Release -r win-x64

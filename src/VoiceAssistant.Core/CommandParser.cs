@@ -67,6 +67,9 @@ public enum CommandKind
 
     /// <summary>“replace Monday with Tuesday” (<see cref="VoiceCommand.Edit"/>).</summary>
     ReplaceText,
+
+    /// <summary>Idea board: add a note or reminder, show a list, tick an item off (<see cref="VoiceCommand.Board"/>).</summary>
+    Board,
 }
 
 public sealed record VoiceCommand(CommandKind Kind, string? Argument = null)
@@ -76,6 +79,9 @@ public sealed record VoiceCommand(CommandKind Kind, string? Argument = null)
 
     /// <summary>For <see cref="CommandKind.DeleteText"/> and <see cref="CommandKind.ReplaceText"/>.</summary>
     public TextEdit? Edit { get; init; }
+
+    /// <summary>For <see cref="CommandKind.Board"/>.</summary>
+    public VoiceAssistant.Board.BoardIntent? Board { get; init; }
 }
 
 public sealed record ParsedUtterance
@@ -216,6 +222,37 @@ public sealed partial class CommandParser
             .ToList();
     }
 
+    /// <summary>The clock for reminder times (“tomorrow at 5”). Tests set it.</summary>
+    public Func<DateTimeOffset> BoardClock { get; init; } = () => DateTimeOffset.Now;
+
+    private VoiceCommand? MatchBoard(string spoken) =>
+        VoiceAssistant.Board.BoardGrammar.Parse(spoken, BoardClock()) is { } intent ? new VoiceCommand(CommandKind.Board) { Board = intent } : null;
+
+    private static int WordCount(string normalized) => normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+
+    /// <summary>
+    /// Drops the transcript's first words that normalising turned into <paramref name="normalizedWords"/> words (the wake
+    /// word or prefix), keeping the rest exactly as said.
+    /// </summary>
+    private static string DropLeadingWords(string cleaned, int normalizedWords)
+    {
+        if (normalizedWords <= 0)
+        {
+            return cleaned;
+        }
+
+        var tokens = cleaned.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var used = 0;
+        var taken = 0;
+        while (taken < tokens.Length && used < normalizedWords)
+        {
+            used += Math.Max(1, WordCount(TranscriptText.Normalize(tokens[taken])));
+            taken++;
+        }
+
+        return string.Join(' ', tokens.Skip(taken)).TrimStart(',', '.', ' ', ':', ';', '!');
+    }
+
     /// <summary>
     /// Removes conversational padding (“can you please …”, “… for me”). Exposed for learning rephrasings.
     /// </summary>
@@ -262,8 +299,12 @@ public sealed partial class CommandParser
             return ParsedUtterance.Empty;
         }
 
+        var normalizedBefore = normalized;
         var woke = TryStripWakeWord(ref normalized);
         var prefixed = woke || TryStripPrefix(ref normalized);
+
+        // The idea board keeps the note's own capitals and punctuation, so it reads the transcript as said.
+        var spoken = DropLeadingWords(cleaned, WordCount(normalizedBefore) - WordCount(normalized));
 
         switch (mode)
         {
@@ -275,6 +316,12 @@ public sealed partial class CommandParser
                 if (normalized.Length == 0)
                 {
                     return new ParsedUtterance { WokeUp = woke };
+                }
+
+                if (prefixed && MatchBoard(spoken) is { } boardWhileTyping)
+                {
+                    // "Hey Jarvis, add to my ideas …" while typing: filed on the board; typing carries on.
+                    return new ParsedUtterance { Commands = [boardWhileTyping], WokeUp = woke, CommandText = Simplify(normalized) };
                 }
 
                 if (_requirePrefixWhileTyping && !prefixed)
@@ -322,6 +369,11 @@ public sealed partial class CommandParser
                 if (text.Length == 0)
                 {
                     return new ParsedUtterance { WokeUp = woke };
+                }
+
+                if (MatchBoard(spoken) is { } board)
+                {
+                    return new ParsedUtterance { Commands = [board], WokeUp = woke, CommandText = text };
                 }
 
                 var commands = MatchCommandMode(text) ?? WithUntrimmedEdit(null, normalized);

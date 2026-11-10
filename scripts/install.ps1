@@ -7,7 +7,7 @@
     2. Publishes a self-contained build for this machine's architecture.
     3. Downloads the speech model from Hugging Face and verifies its SHA-256 hash.
     4. Installs to %LOCALAPPDATA%\Programs\VoiceAssistant and adds a Start menu shortcut.
-    5. Starts the app (look for the microphone icon in the system tray).
+    5. Starts the app: its window opens and its microphone icon sits in the system tray.
 
 .EXAMPLE
     .\scripts\install.ps1
@@ -175,7 +175,7 @@ $link.Save()
 
 $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 if ($StartAtSignIn) {
-    Set-ItemProperty $runKey -Name VoiceAssistant -Value "`"$Exe`""
+    Set-ItemProperty $runKey -Name VoiceAssistant -Value "`"$Exe`" --background"
     Write-Step 'Voice Assistant will start when you sign in'
 }
 
@@ -185,7 +185,8 @@ if (-not $NoLaunch) {
 }
 
 Write-Host ''
-Write-Host 'Installed. Look for the purple microphone icon in the system tray.' -ForegroundColor Green
+Write-Host 'Installed. The Voice Assistant window opens; closing it keeps the assistant running in the system tray.' -ForegroundColor Green
 Write-Host '  Dictate anywhere: hold Ctrl+Win, speak, release (Ctrl+Win+Space = hands-free)'
 Write-Host '  Voice commands:   "Hey Jarvis, open Notepad" -> "Start typing" -> speak -> "Stop typing"'
-Write-Host '  Pause or resume listening: Ctrl+Alt+Space (or click the tray icon)'
+Write-Host '  Idea board:       "Hey Jarvis, add buy milk to my to-do list" / "remind me at 5 pm to call Mom"'
+Write-Host '  Pause or resume listening: Ctrl+Alt+Space. Click the tray icon to open the window.'

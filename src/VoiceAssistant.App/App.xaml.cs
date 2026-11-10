@@ -1,15 +1,27 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Threading;
 using VoiceAssistant.App.Platform;
 using VoiceAssistant.App.UI;
+using VoiceAssistant.Board;
 
 namespace VoiceAssistant.App;
 
 public partial class App : System.Windows.Application
 {
+    private const string ShowWindowEvent = @"Local\VoiceAssistant.ShowWindow";
+    private const string RestartedArgument = "--restarted";
+    private const int MaxReminderPopups = 4;
+
     private Mutex? _singleInstance;
     private bool _ownsMutex;
     private AssistantHost? _host;
+    private BoardStore? _board;
+    private MainWindow? _window;
+    private EventWaitHandle? _showEvent;
+    private RegisteredWaitHandle? _showWait;
+    private DispatcherTimer? _reminders;
+    private readonly List<ReminderPopup> _popups = [];
     private TrayIcon? _tray;
     private GlobalHotkey? _hotkey;
     private GlobalHotkey? _pasteHotkey;
@@ -37,10 +49,13 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        var background = e.Args.Contains(StartupRegistration.BackgroundArgument);
+        var restarted = e.Args.Contains(RestartedArgument);
         _singleInstance = new Mutex(false, @"Local\VoiceAssistant.SingleInstance");
         try
         {
-            _ownsMutex = _singleInstance.WaitOne(TimeSpan.FromSeconds(3));
+            // After “Save and restart” the old copy may need a moment to exit.
+            _ownsMutex = _singleInstance.WaitOne(TimeSpan.FromSeconds(restarted ? 15 : 3));
         }
         catch (AbandonedMutexException)
         {
@@ -49,7 +64,19 @@ public partial class App : System.Windows.Application
 
         if (!_ownsMutex)
         {
-            System.Windows.MessageBox.Show("Voice Assistant is already running — look for its icon in the system tray.", "Voice Assistant");
+            // Launching it again (Start menu, desktop shortcut) opens the running copy's window.
+            if (!background && EventWaitHandle.TryOpenExisting(ShowWindowEvent, out var show))
+            {
+                // This launch came from the user, so it may pass its right to take the foreground to the running copy.
+                Win32.AllowSetForegroundWindow(Win32.ASFW_ANY);
+                show.Set();
+                show.Dispose();
+            }
+            else if (!background)
+            {
+                System.Windows.MessageBox.Show("Voice Assistant is already running — look for its icon in the system tray.", "Voice Assistant");
+            }
+
             Shutdown();
             return;
         }
@@ -57,14 +84,29 @@ public partial class App : System.Windows.Application
         Log.Initialize();
         Log.Info($"starting {typeof(App).Assembly.GetName().Version} on {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}");
         DispatcherUnhandledException += OnUnhandledException;
+        StartupRegistration.UpgradeOldEntry();
 
         var settings = AppSettings.LoadOrCreate();
         _overlay = new OverlayWindow(commandModeIsIdle: !settings.WakeWordEnabled);
         _overlay.Show();
         _overlay.Minimized = File.Exists(AppPaths.OverlayMinimizedFlag);
 
-        _host = new AssistantHost(settings, Dispatcher);
-        _tray = new TrayIcon(_host, settings.Hotkey, settings.DictationLanguageHotkey, _overlay, () => Shutdown());
+        _board = new BoardStore(AppPaths.BoardFile);
+        _host = new AssistantHost(settings, Dispatcher, board: _board);
+        _tray = new TrayIcon(_host, settings.Hotkey, settings.PasteLastHotkey, settings.DictationLanguageHotkey, _overlay, OpenPage, Quit);
+        _window = new MainWindow(_host, settings, _board, Restart, message => _tray.ShowBalloon(message, warning: false));
+        _host.ShowBoardRequested += _window.ShowBoard;
+        if (!background)
+        {
+            _window.Show();
+        }
+
+        _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowWindowEvent);
+        _showWait = ThreadPool.RegisterWaitForSingleObject(_showEvent, (_, _) => Dispatcher.BeginInvoke(() => _window.Bring()), null, Timeout.Infinite, executeOnlyOnce: false);
+        _reminders = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
+        _reminders.Tick += (_, _) => ShowDueReminders();
+        _reminders.Start();
+        Dispatcher.BeginInvoke(ShowDueReminders, DispatcherPriority.ApplicationIdle);
         _overlay.MinimizedChanged += minimized =>
         {
             StateFlags.Set(AppPaths.OverlayMinimizedFlag, minimized);
@@ -100,6 +142,9 @@ public partial class App : System.Windows.Application
     protected override void OnExit(ExitEventArgs e)
     {
         Log.Info("exiting");
+        _reminders?.Stop();
+        _showWait?.Unregister(null);
+        _showEvent?.Dispose();
         _keyHook?.Dispose();
         _hotkey?.Dispose();
         _pasteHotkey?.Dispose();
@@ -201,6 +246,91 @@ public partial class App : System.Windows.Application
         {
             _tray?.ShowBalloon(ex.Message);
             return null;
+        }
+    }
+
+    private void OpenPage(AppPage page)
+    {
+        if (page == AppPage.Ideas)
+        {
+            _window?.ShowBoard(null);
+            return;
+        }
+
+        _window?.Bring();
+        _window?.ShowPage(page);
+    }
+
+    private void Quit()
+    {
+        _window?.AllowClose();
+        Shutdown();
+    }
+
+    /// <summary>Starts a fresh copy (which waits for this one to exit) so changed settings take effect.</summary>
+    private void Restart()
+    {
+        var args = RestartedArgument + (_window?.IsVisible == true ? string.Empty : " " + StartupRegistration.BackgroundArgument);
+        try
+        {
+            Process.Start(new ProcessStartInfo(Environment.ProcessPath!, args) { UseShellExecute = false })?.Dispose();
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            Log.Warn($"restart failed: 0x{ex.HResult:X8}");
+            _tray?.ShowBalloon("Couldn't restart. Exit from the tray and start Voice Assistant again.");
+            return;
+        }
+
+        Quit();
+    }
+
+    /// <summary>Pops up reminders that are due (including ones that came due while the app wasn't running).</summary>
+    private void ShowDueReminders()
+    {
+        if (_board is null || _window is null)
+        {
+            return;
+        }
+
+        var shown = false;
+        foreach (var item in _board.DueReminders())
+        {
+            if (_popups.Count >= MaxReminderPopups)
+            {
+                break;
+            }
+
+            var popup = new ReminderPopup(item, _board, () => _window.ShowBoard(BoardList.Reminders));
+            popup.Loaded += (_, _) => StackPopups();
+            popup.Closed += (_, _) =>
+            {
+                _popups.Remove(popup);
+                StackPopups();
+            };
+            _popups.Add(popup);
+            popup.Show();
+            _board.MarkNotified(item.Id);
+            Log.Info("reminder shown");
+            shown = true;
+        }
+
+        if (shown)
+        {
+            System.Media.SystemSounds.Asterisk.Play();
+        }
+    }
+
+    /// <summary>Stacks the open reminder cards upwards from the bottom-right corner, oldest at the bottom.</summary>
+    private void StackPopups()
+    {
+        var area = SystemParameters.WorkArea;
+        var bottom = area.Bottom - 4;
+        foreach (var popup in _popups.Where(p => p.IsLoaded))
+        {
+            popup.Left = area.Right - popup.ActualWidth - 16;
+            popup.Top = bottom - popup.ActualHeight;
+            bottom = popup.Top - 12;
         }
     }
 

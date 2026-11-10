@@ -66,15 +66,26 @@ start and end, cancel.
   with it, the first phrase is remembered as meaning the second (“get notepad going” → “open notepad”). The pill says
   “Got it — next time ‘…’ will do that too.”
 - App use is counted; when an app name is ambiguous, the clearly most-used app wins.
-- Learned data stays on the device (`learned.json`) and can be cleared from the tray (“Forget what I've learned”).
+- Learned data stays on the device (`learned.json`) and can be cleared in Settings (“Forget what I've learned”).
 
 ## Settings
 
-User-editable JSON (`%APPDATA%\VoiceAssistant\settings.json` on Windows). Every platform should offer the same keys
+Edited on the app window's Settings page (Save and restart applies them) or as user-editable JSON
+(`%APPDATA%\VoiceAssistant\settings.json` on Windows). Every platform should offer the same keys
 where they make sense. The full list and defaults are in the [README](../../README.md#settings). UI-only choices
-(pill minimised, Hindi + English on) are stored as separate flags so the settings file is never rewritten by the app.
+(pill minimised, Hindi + English on) are stored as separate flags. Apart from creating the file on first run, the app
+rewrites it only when the user saves the Settings page, and then re-reads it and changes only the fields edited there
+(comments are dropped; an unreadable file is never overwritten).
+
+## App window
+
+Pages: **Home** (status, pause/start, dictation language, upcoming reminders, recent activity), **Idea board**
+([idea-board.md](idea-board.md)), **Settings** (the settings below, open settings file, open logs, forget learned phrases)
+and **What you can say** (searchable command list). Closing the window must not stop the assistant: it keeps running in
+the tray / menu bar. Starting the app at sign-in opens no window; starting it again while it runs opens the running
+copy's window.
 
 ## Tray / menu bar
 
-Pause/resume, paste last dictation, dictation language, copy untyped text, voice command help, always show status pill,
-start at sign-in, forget learned phrases, open settings, open logs, exit.
+Click: open the window. Menu: open, idea board, status, pause/resume, paste last dictation, dictation language, copy
+untyped text, what you can say, settings, always show status pill, start at sign-in, exit.

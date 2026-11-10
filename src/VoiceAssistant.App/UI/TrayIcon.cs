@@ -1,7 +1,5 @@
-using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
-using Microsoft.Win32;
 using VoiceAssistant.App.Platform;
 using VoiceAssistant.Core;
 
@@ -9,9 +7,6 @@ namespace VoiceAssistant.App.UI;
 
 internal sealed class TrayIcon : IDisposable
 {
-    private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string RunValue = "VoiceAssistant";
-
     private readonly NotifyIcon _icon;
     private readonly Dictionary<InteractionMode, (Icon Icon, nint Handle)> _icons = [];
     private readonly ToolStripMenuItem _status;
@@ -19,7 +14,7 @@ internal sealed class TrayIcon : IDisposable
     private readonly ToolStripMenuItem _startAtSignIn;
     private readonly string _hotkey;
 
-    public TrayIcon(AssistantHost host, string hotkey, string languageHotkey, OverlayWindow overlay, Action exit)
+    public TrayIcon(AssistantHost host, string hotkey, string pasteHotkey, string languageHotkey, OverlayWindow overlay, Action<AppPage> open, Action exit)
     {
         _hotkey = hotkey;
         _icons[InteractionMode.Paused] = MakeIcon(Color.FromArgb(154, 160, 166));
@@ -29,7 +24,7 @@ internal sealed class TrayIcon : IDisposable
 
         _status = new ToolStripMenuItem("Starting…") { Enabled = false };
         _toggle = new ToolStripMenuItem($"Start listening\t{hotkey}", null, (_, _) => host.ToggleListening());
-        _startAtSignIn = new ToolStripMenuItem("Start when I sign in", null, (_, _) => ToggleStartAtSignIn()) { Checked = IsStartAtSignIn() };
+        _startAtSignIn = new ToolStripMenuItem("Start when I sign in", null, (_, _) => StartupRegistration.Set(!StartupRegistration.IsEnabled));
         var showPill = new ToolStripMenuItem("Always show status pill", null, (_, _) => overlay.Minimized = !overlay.Minimized);
         var english = new ToolStripMenuItem("English", null, (_, _) => host.SetDictationLanguage(hinglish: false));
         var hinglish = new ToolStripMenuItem("Hindi + English — fast (typed in Roman letters)", null, (_, _) => host.SetDictationLanguage(hinglish: true, accurate: false));
@@ -43,23 +38,26 @@ internal sealed class TrayIcon : IDisposable
         menu.Opening += (_, _) =>
         {
             showPill.Checked = !overlay.Minimized;
+            _startAtSignIn.Checked = StartupRegistration.IsEnabled;
             english.Checked = !host.HinglishDictation;
             hinglish.Checked = host.HinglishDictation && !host.HinglishAccurate;
             hinglishAccurate.Checked = host.HinglishDictation && host.HinglishAccurate;
         };
-        menu.Items.Add(_status);
+        var openApp = new ToolStripMenuItem("Open Voice Assistant", null, (_, _) => open(AppPage.Home));
+        openApp.Font = new Font(openApp.Font, System.Drawing.FontStyle.Bold);
+        menu.Items.Add(openApp);
+        menu.Items.Add(new ToolStripMenuItem("Idea board", null, (_, _) => open(AppPage.Ideas)));
         menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(_status);
         menu.Items.Add(_toggle);
-        menu.Items.Add(new ToolStripMenuItem("Paste last dictation\tAlt+Shift+Z", null, (_, _) => host.PasteLastTranscript()));
+        menu.Items.Add(new ToolStripMenuItem($"Paste last dictation\t{pasteHotkey}", null, (_, _) => host.PasteLastTranscript()));
         menu.Items.Add(language);
         menu.Items.Add(new ToolStripMenuItem("Copy text that wasn't typed", null, (_, _) => host.CopyUntypedText()));
-        menu.Items.Add(new ToolStripMenuItem("Voice commands…", null, (_, _) => ShowCommands()));
         menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(new ToolStripMenuItem("What you can say", null, (_, _) => open(AppPage.Help)));
+        menu.Items.Add(new ToolStripMenuItem("Settings", null, (_, _) => open(AppPage.Settings)));
         menu.Items.Add(showPill);
         menu.Items.Add(_startAtSignIn);
-        menu.Items.Add(new ToolStripMenuItem("Forget what I've learned", null, (_, _) => host.ForgetLearned()));
-        menu.Items.Add(new ToolStripMenuItem("Open settings file", null, (_, _) => OpenSettings()));
-        menu.Items.Add(new ToolStripMenuItem("Open logs folder", null, (_, _) => Open(AppPaths.LogsDir)));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Exit", null, (_, _) => exit()));
 
@@ -74,7 +72,7 @@ internal sealed class TrayIcon : IDisposable
         {
             if (e.Button == MouseButtons.Left)
             {
-                host.ToggleListening();
+                open(AppPage.Home);
             }
         };
     }
@@ -130,81 +128,5 @@ internal sealed class TrayIcon : IDisposable
 
         var handle = bitmap.GetHicon();
         return (Icon.FromHandle(handle), handle);
-    }
-
-    private static void ShowCommands() => System.Windows.MessageBox.Show(
-        """
-        DICTATE ANYWHERE (like Wispr Flow)
-          Hold Ctrl+Win, speak, release → text is typed where your cursor is
-          Ctrl+Win+Space → hands-free dictation; press again to finish
-          Esc → cancel   ·   Alt+Shift+Z → paste last dictation
-          Say “comma”, “question mark”, “new line”; “um/uh” are removed;
-          “…scratch that…” drops the phrase before it.
-          Click “–” on the status pill to hide it until it's needed
-          (tray menu › Always show status pill brings it back).
-          Alt+Shift+H → dictate in Hindi + English (typed in Roman letters);
-          press again for English. Commands stay in English.
-
-        VOICE COMMANDS — start with “Hey Jarvis” (then 8 s without it)
-          “Hey Jarvis, open Notepad”  ·  “…open Chrome”  ·  “…open GitHub Copilot”
-          “Start typing”  (Notepad: document; Copilot: message box)
-          “Go to the search box” / “Go to the address bar”
-          “Search for weather in Bangalore”
-          “New tab”, “Refresh”, “Copy”, “Paste”, “Undo”, “Save”
-          “Go back” / “Previous page” · “Go forward” / “Next page” · “Go up” (Explorer)
-          “Press enter / tab / escape / down …”
-          “Pause listening”
-
-        WHILE TYPING (red) — pause briefly before each command
-          “Send” / “Search”     “Scratch that”     “Clear box”
-          “Delete the last 3 words / sentence / line”
-          “Delete the word very” · “Replace the word Monday with Tuesday”
-          “New line”            “Stop typing”      “Press tab”
-
-        NAVIGATE — after “Hey Jarvis”
-          “Go to the first tab” · “Go to the YouTube tab”
-          “Click New on the left” · “Click Library” · “Expand Sessions”
-          “Start typing in YouTube” · “Start typing in the message box”
-          “Show numbers” → say a number · “Hide numbers”
-          Delete / merge / sign out / pay → say “yes” to confirm
-        """,
-        "Voice Assistant — commands");
-
-    private static void OpenSettings()
-    {
-        if (!File.Exists(AppPaths.SettingsFile))
-        {
-            new AppSettings().Save();
-        }
-
-        Process.Start(new ProcessStartInfo("notepad.exe", $"\"{AppPaths.SettingsFile}\"") { UseShellExecute = true })?.Dispose();
-        System.Windows.MessageBox.Show("Restart Voice Assistant after saving changes.", "Voice Assistant");
-    }
-
-    private static void Open(string folder)
-    {
-        Directory.CreateDirectory(folder);
-        Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true })?.Dispose();
-    }
-
-    private static bool IsStartAtSignIn()
-    {
-        using var key = Registry.CurrentUser.OpenSubKey(RunKey);
-        return key?.GetValue(RunValue) is string;
-    }
-
-    private void ToggleStartAtSignIn()
-    {
-        using var key = Registry.CurrentUser.CreateSubKey(RunKey);
-        if (IsStartAtSignIn())
-        {
-            key.DeleteValue(RunValue, throwOnMissingValue: false);
-        }
-        else
-        {
-            key.SetValue(RunValue, $"\"{Environment.ProcessPath}\"");
-        }
-
-        _startAtSignIn.Checked = IsStartAtSignIn();
     }
 }

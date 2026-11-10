@@ -588,7 +588,7 @@ internal sealed partial class WindowsDesktop : IDesktop
         return DesktopResult.Fail($"Windows didn't let me bring {appName} to the front. Click it once, then say “start typing”.");
     }
 
-    private static void TrySetForeground(nint hwnd)
+    internal static void TrySetForeground(nint hwnd)
     {
         if (Win32.SetForegroundWindow(hwnd))
         {

@@ -10,6 +10,7 @@ pull request as the code.
 | [dictation.md](dictation.md) | Push-to-talk, hands-free, live preview, text clean-up, insertion, Hindi + English |
 | [voice-commands.md](voice-commands.md) | Command grammar: apps, typing, editing keys, strict vs. lenient matching |
 | [navigation.md](navigation.md) | Tabs, clicking by name, numbers, confirmations, “start typing in X”, the current place |
+| [idea-board.md](idea-board.md) | Ideas, brainstorm, to-do and reminder notes by voice; reminder times and pop-ups; the app window |
 | [speech-pipeline.md](speech-pipeline.md) | Microphone → voice-activity detection → Whisper; models, parameters, latency budgets |
 | [safety-and-privacy.md](safety-and-privacy.md) | What the assistant must never do, and what it may store or log |
 | [platform-porting.md](platform-porting.md) | How each capability maps to Windows, macOS, Android and iOS APIs; what can't be ported |
@@ -31,7 +32,7 @@ pull request as the code.
 - “The user says X” means the speech recogniser returned X as one pause-delimited utterance. Matching ignores case,
   punctuation, and hyphens (“Co-Pilot.” = “copilot”).
 - Quoted pill messages are the Windows wording; other platforms should keep the meaning, not necessarily the words.
-- These specs describe **v0.5.0**. Version this folder with the app.
+- These specs describe **v0.7.0**. Version this folder with the app.
 
 ## Background documents
 

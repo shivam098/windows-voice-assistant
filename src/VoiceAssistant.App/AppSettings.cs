@@ -30,6 +30,9 @@ internal static class AppPaths
     public static string SettingsFile { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VoiceAssistant", "settings.json");
 
     /// <summary>Learned rephrasings and app usage counts (local only).</summary>
+    /// <summary>The idea board: ideas, brainstorm, to-do and reminders.</summary>
+    public static string BoardFile { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VoiceAssistant", "board.json");
+
     public static string LearnedFile { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VoiceAssistant", "learned.json");
 }
 
@@ -244,9 +247,31 @@ internal sealed class AppSettings
         return settings;
     }
 
+    /// <summary>
+    /// The settings file as it is now, for the Settings page to change a few fields in. Null (with the reason) if the
+    /// file can't be read, so a typo in it is never replaced by defaults.
+    /// </summary>
+    public static AppSettings? LoadForEdit(out string? error)
+    {
+        error = null;
+        try
+        {
+            return File.Exists(AppPaths.SettingsFile)
+                ? JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(AppPaths.SettingsFile), JsonOptions) ?? new AppSettings()
+                : new AppSettings();
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        {
+            error = ex is JsonException json ? $"settings.json has an error near line {(json.LineNumber ?? 0) + 1}" : ex.Message;
+            return null;
+        }
+    }
+
     public void Save()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(AppPaths.SettingsFile)!);
-        File.WriteAllText(AppPaths.SettingsFile, JsonSerializer.Serialize(this, JsonOptions));
+        var temp = AppPaths.SettingsFile + ".tmp";
+        File.WriteAllText(temp, JsonSerializer.Serialize(this, JsonOptions));
+        File.Move(temp, AppPaths.SettingsFile, overwrite: true);
     }
 }
