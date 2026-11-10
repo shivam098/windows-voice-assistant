@@ -163,6 +163,11 @@ internal sealed partial class WindowsDesktop : IDesktop
 
     public FieldCheck CheckFocusedField()
     {
+        // The desktop and the taskbar belong to Explorer; nothing there takes text except renaming an icon.
+        var hwnd = Win32.GetForegroundWindow();
+        var top = hwnd == 0 ? 0 : Win32.GetAncestor(hwnd, Win32.GA_ROOT);
+        var shell = top != 0 && Win32.GetClassName(top) is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd";
+
         if (GetForegroundWindow() is { } foreground && Win32.IsProcessElevated(foreground.ProcessId) == true)
         {
             return FieldCheck.Elevated;
@@ -170,7 +175,17 @@ internal sealed partial class WindowsDesktop : IDesktop
 
         try
         {
-            var check = Task.Run(() => Check(Focused()));
+            var check = Task.Run(() =>
+            {
+                var focused = Focused();
+                if (shell && !IsEditable(focused))
+                {
+                    return FieldCheck.NotText;
+                }
+
+                var result = Check(focused);
+                return result == FieldCheck.Safe && !shell && IsClearlyNotText(focused) ? FieldCheck.NotText : result;
+            });
             return check.Wait(800) ? check.Result : FieldCheck.Unknown;
         }
         catch (AggregateException)
@@ -441,6 +456,29 @@ internal sealed partial class WindowsDesktop : IDesktop
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// Focus is on something that positively doesn't take text: a file or chat list, a tree, a button, a link, a menu,
+    /// a tab. Anything else (documents, panes, custom controls, spreadsheet cells, terminals) still gets the text, so
+    /// apps with unusual text boxes are never skipped.
+    /// </summary>
+    private static bool IsClearlyNotText(AutomationElement? element)
+    {
+        if (element is null || IsEditable(element))
+        {
+            return false;
+        }
+
+        return SafeGet(() =>
+        {
+            var type = element.Current.ControlType;
+            return type == ControlType.List || type == ControlType.ListItem || type == ControlType.Tree || type == ControlType.TreeItem
+                || type == ControlType.Button || type == ControlType.SplitButton || type == ControlType.Hyperlink
+                || type == ControlType.MenuItem || type == ControlType.Menu || type == ControlType.MenuBar
+                || type == ControlType.Tab || type == ControlType.TabItem || type == ControlType.CheckBox
+                || type == ControlType.RadioButton || type == ControlType.Image || type == ControlType.Header || type == ControlType.HeaderItem;
+        });
     }
 
     private static bool IsEditable(AutomationElement? element)

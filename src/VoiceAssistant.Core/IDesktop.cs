@@ -33,6 +33,12 @@ public enum FieldCheck
 
     /// <summary>Accessibility query failed or timed out; treat as unsafe.</summary>
     Unknown,
+
+    /// <summary>
+    /// Nothing that takes text has focus: the desktop, the taskbar, or a list, button or link. Push-to-talk files the
+    /// dictation on the idea board instead of typing it.
+    /// </summary>
+    NotText,
 }
 
 /// <summary>Operating-system side effects. Implemented with Win32/UI Automation in the app; faked in tests.</summary>

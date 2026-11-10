@@ -15,6 +15,7 @@ internal static class HelpText
         ]),
         ("Idea board", [
             "Hold Ctrl+Win: “Add to my ideas, a voice game for kids” → filed on the board, not typed",
+            "Hold Ctrl+Win with no text box in focus (desktop, a list) → saved on the board: a task with a time → Reminders, “I have to …” / “buy milk” → To-do, else Ideas",
             "“Add renew passport to my to-do list” · “Add to brainstorming, pricing ideas”",
             "“Hey Jarvis, remind me to call mom tomorrow at 5 pm” → a reminder pops up then",
             "“Hey Jarvis, note down that the demo needs subtitles” → Ideas",

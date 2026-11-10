@@ -105,11 +105,64 @@ public class BoardTests
     // ---- reminder times ----
 
     [Theory]
+    [InlineData("and add to my reminder, I have to draft a reply to Tata", BoardList.Reminders, "I have to draft a reply to Tata")]
+    [InlineData("Um, add to my ideas, a voice game", BoardList.Ideas, "A voice game")]
+    [InlineData("Also add renew passport to my to-do list.", BoardList.Todo, "Renew passport")]
+    [InlineData("Um, so, add to my brainstorm list, pricing", BoardList.Brainstorm, "Pricing")]
+    [InlineData("So, and add to my reminders: pay rent", BoardList.Reminders, "Pay rent")]
+    public void Leading_filler_words_are_ignored(string spoken, BoardList list, string text)
+    {
+        var intent = BoardGrammar.Parse(spoken, Now, explicitOnly: true);
+        Assert.Equal(list, intent?.List);
+        Assert.Equal(text, intent?.Text);
+    }
+
+    [Theory]
+    [InlineData("A voice game where kids guess animal sounds.", BoardList.Ideas, "A voice game where kids guess animal sounds")]
+    [InlineData("I have to draft a reply to Tata Neu.", BoardList.Todo, "Draft a reply to Tata Neu")]
+    [InlineData("We should move the standup to Thursdays", BoardList.Todo, "Move the standup to Thursdays")]
+    [InlineData("Don't forget to water the plants", BoardList.Todo, "Water the plants")]
+    [InlineData("I have to call mom tomorrow at 5 pm.", BoardList.Reminders, "Call mom")]
+    [InlineData("Pay the rent in 2 hours", BoardList.Reminders, "Pay the rent")]
+    [InlineData("Add to my brainstorm list, pricing tiers", BoardList.Brainstorm, "Pricing tiers")]
+    [InlineData("and add to my reminder, I have to draft a reply", BoardList.Reminders, "I have to draft a reply")]
+    [InlineData("Call 3 people about the offsite", BoardList.Todo, "Call 3 people about the offsite")]
+    [InlineData("I've got to call mom.", BoardList.Todo, "Call mom")]
+    [InlineData("Don’t forget to water the plants", BoardList.Todo, "Water the plants")]
+    [InlineData("To-do: renew the domain", BoardList.Todo, "Renew the domain")]
+    [InlineData("To do that we need more data", BoardList.Ideas, "To do that we need more data")]
+    [InlineData("The demo today went well.", BoardList.Ideas, "The demo today went well")]
+    [InlineData("We met at 10 and agreed to ship on Friday.", BoardList.Ideas, "We met at 10 and agreed to ship on Friday")]
+    [InlineData("Version 2:30 of the app is great", BoardList.Ideas, "Version 2:30 of the app is great")]
+    [InlineData("Call the bank this morning", BoardList.Todo, "Call the bank this morning")]
+    public void Dictation_with_nowhere_to_type_goes_to_a_sensible_list(string spoken, BoardList list, string text)
+    {
+        var intent = BoardGrammar.ForDictation(spoken, Now);
+        Assert.Equal(BoardAction.Add, intent.Action);
+        Assert.Equal(list, intent.List);
+        Assert.Equal(text, intent.Text);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("\n")]
+    [InlineData(" . ")]
+    public void Nothing_to_keep_is_not_a_note(string text) => Assert.Null(BoardGrammar.ForDictation(text, Now));
+
+    [Fact]
+    public void Can_you_still_works_after_the_wake_word() =>
+        Assert.Equal(BoardList.Brainstorm, BoardGrammar.Parse("Can you please add to my brainstorm list, pricing", Now)?.List);
+
+    [Theory]
     [InlineData("Please add the action items to the notes.")]
     [InlineData("Put the agenda on the board.")]
     [InlineData("Write your name on the board.")]
     [InlineData("Add these to the tasks.")]
     [InlineData("Can you add this to the to-do list for the sprint")]
+    [InlineData("Can you add the pricing deck to the ideas list.")]
+    [InlineData("Could you put the launch date in our reminders.")]
+    [InlineData("So will you add the venue to our to-do list.")]
+    [InlineData("Can you add the slides to our tasks")]
     public void Push_to_talk_types_sentences_meant_for_someone_else(string spoken) =>
         Assert.Null(BoardGrammar.Parse(spoken, Now, explicitOnly: true));
 

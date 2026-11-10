@@ -2,13 +2,19 @@
 .SYNOPSIS
     Checks spoken edits ("delete the last two words", "replace the word Monday with Tuesday", ...) in a real text box.
 .DESCRIPTION
-    Opens a small test window (edit-host.ps1) with one text box, brings it to the front, runs editing-lab.selftest.txt
+    Opens a small test window (edit-host.ps1, or no-text-host.ps1 with -Lab NoTextBox), brings it to the front, runs its script
     through VoiceAssistant.exe --self-test (transcripts are scripted; no microphone), prints the results, and closes the
     test window. Run it while you're not using the PC: it stops at the first failed check instead of typing elsewhere.
 .EXAMPLE
     .\tests\EditingLab\run.ps1 -Exe .\src\VoiceAssistant.App\bin\Release\net10.0-windows\win-arm64\VoiceAssistant.exe
 #>
-param([Parameter(Mandatory)] [string] $Exe)
+param(
+    [Parameter(Mandatory)] [string] $Exe,
+    # Editing: spoken edits in a text box. NoTextBox: push-to-talk with a list focused goes to the idea board.
+    [ValidateSet('Editing', 'NoTextBox')] [string] $Lab = 'Editing'
+)
+
+$hostScript, $selfTest, $title = if ($Lab -eq 'NoTextBox') { 'no-text-host.ps1', 'no-text-box.selftest.txt', 'No Text Lab' } else { 'edit-host.ps1', 'editing-lab.selftest.txt', 'Edit Lab' }
 
 $ErrorActionPreference = 'Stop'
 
@@ -50,13 +56,13 @@ function Get-LabWindow([string] $profileMarker) {
 
 $here = $PSScriptRoot
 # pwsh hides its own console; the test form itself is shown normally.
-$host_ = Start-Process pwsh -ArgumentList "-NoProfile -STA -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$(Join-Path $here 'edit-host.ps1')`"" -PassThru
+$host_ = Start-Process pwsh -ArgumentList "-NoProfile -STA -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$(Join-Path $here $hostScript)`"" -PassThru
 try {
     $window = [IntPtr]::Zero
     Add-Type -Namespace EditLab -Name Win -MemberDefinition '[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);'
     for ($i = 0; $i -lt 60 -and $window -eq [IntPtr]::Zero; $i++) {
         Start-Sleep -Milliseconds 250
-        $window = [EditLab.Win]::FindWindow([NullString]::Value, 'Edit Lab') # $null would arrive as "", a class name
+        $window = [EditLab.Win]::FindWindow([NullString]::Value, $title) # $null would arrive as "", a class name
     }
 
     if ($window -eq [IntPtr]::Zero -or -not [LabWindow]::BringToFront($window)) {
@@ -66,7 +72,7 @@ try {
     }
     $out = Join-Path $env:TEMP 'va-editlab.out.txt'
     Remove-Item $out -ErrorAction SilentlyContinue
-    $p = Start-Process $Exe -ArgumentList "--self-test `"$(Join-Path $here 'editing-lab.selftest.txt')`" `"$out`"" -PassThru
+    $p = Start-Process $Exe -ArgumentList "--self-test `"$(Join-Path $here $selfTest)`" `"$out`"" -PassThru
     if (-not $p.WaitForExit(180000)) { Stop-Process -Id $p.Id; throw 'self-test timed out' }
     $lines = Get-Content $out
     $lines

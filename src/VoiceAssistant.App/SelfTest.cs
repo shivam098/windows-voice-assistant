@@ -18,6 +18,7 @@ namespace VoiceAssistant.App;
 ///   expectvalue: &lt;text&gt;    PASS/FAIL: is the focused control's whole text exactly this (\n = line break)
 ///   expecttitle: &lt;text&gt;    PASS/FAIL: does the foreground window title contain the phrase (title not written)
 ///   expectfocus: &lt;name&gt;    PASS/FAIL: does the focused control's accessible name contain the phrase
+///   expectboard: &lt;list&gt; &lt;text&gt;  PASS/FAIL: does the self-test's in-memory idea board have that note in that list
 ///   insert Paste|Type      switch the insertion method
 ///   stoponfail             stop the script at the first FAIL (use before steps that type)
 ///   clipboard              record a fingerprint (formats, hash, length) of the clipboard, not its text
@@ -30,7 +31,10 @@ internal static class SelfTest
     {
         var output = new StringBuilder();
         var settings = AppSettings.LoadOrCreate();
-        using var host = new AssistantHost(settings, ui, persistMemory: false);
+
+        // An in-memory board: self-tests never touch the user's notes.
+        var board = new VoiceAssistant.Board.BoardStore(null);
+        using var host = new AssistantHost(settings, ui, persistMemory: false, board: board);
         host.Status += s => output.AppendLine($"   [{s.Mode}] {s.Kind}: {Redact(s.Message)}");
         host.ChoicesChanged += b => output.AppendLine($"   choices shown: {b?.Count ?? 0}");
 
@@ -124,6 +128,14 @@ internal static class SelfTest
                     var title = new Platform.WindowsDesktop().GetForegroundWindow()?.Title ?? string.Empty;
                     var pass = title.Contains(expected, StringComparison.OrdinalIgnoreCase);
                     output.AppendLine($"   {(pass ? "PASS" : "FAIL")}: foreground title {(pass ? "contains" : "does not contain")} the expected phrase");
+                }
+                else if (line.StartsWith("expectboard:", StringComparison.Ordinal))
+                {
+                    // "expectboard: Todo Draft a reply": the (in-memory) board has that note in that list.
+                    var parts = line[12..].Trim().Split(' ', 2);
+                    var pass = parts.Length == 2 && Enum.TryParse<VoiceAssistant.Board.BoardList>(parts[0], true, out var list)
+                        && board.Items.Any(i => i.List == list && i.Text == parts[1]);
+                    output.AppendLine($"   {(pass ? "PASS" : "FAIL")}: board {(pass ? "has" : "does not have")} the expected note (notes={board.Items.Count})");
                 }
                 else if (line.StartsWith("expect:", StringComparison.Ordinal))
                 {

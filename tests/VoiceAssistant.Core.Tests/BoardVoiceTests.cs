@@ -107,6 +107,74 @@ public class BoardVoiceTests
     }
 
     [Fact]
+    public void Push_to_talk_with_no_window_saves_the_dictation_to_the_board()
+    {
+        _desktop.Foreground = null;
+        _controller.InsertDictation("I have to draft a reply to Tata Neu about the refund.");
+        var item = Assert.Single(_board.Items);
+        Assert.Equal(BoardList.Todo, item.List);
+        Assert.Equal("Draft a reply to Tata Neu about the refund", item.Text);
+        Assert.StartsWith("No text box", _statuses[^1].Message, StringComparison.Ordinal);
+        Assert.Equal(StatusKind.Success, _statuses[^1].Kind);
+    }
+
+    [Theory]
+    [InlineData("A voice game where kids guess animal sounds.", BoardList.Ideas, null)]
+    [InlineData("Call the bank tomorrow at 11 am.", BoardList.Reminders, "Call the bank")]
+    [InlineData("I need to renew the car insurance.", BoardList.Todo, "Renew the car insurance")]
+    public void Push_to_talk_on_something_that_is_not_a_text_box_saves_to_the_right_list(string spoken, BoardList list, string? text)
+    {
+        _desktop.Field = FieldCheck.NotText;
+        _controller.InsertDictation(spoken);
+        var item = Assert.Single(_board.Items);
+        Assert.Equal(list, item.List);
+        if (text is not null)
+        {
+            Assert.Equal(text, item.Text);
+        }
+
+        Assert.Empty(_desktop.Typed);
+    }
+
+    [Theory]
+    [InlineData(FieldCheck.Unknown)]
+    [InlineData(FieldCheck.Safe)]
+    public void Push_to_talk_into_a_field_that_might_take_text_still_types(FieldCheck field)
+    {
+        _desktop.Field = field;
+        _controller.InsertDictation("I have to draft a reply.");
+        Assert.Empty(_board.Items);
+        Assert.NotEmpty(_desktop.Typed);
+    }
+
+    [Fact]
+    public void Saying_only_new_line_with_no_text_box_saves_nothing()
+    {
+        _desktop.Foreground = null;
+        _controller.InsertDictation("new line");
+        Assert.Empty(_board.Items);
+    }
+
+    [Fact]
+    public void Paste_last_dictation_with_no_window_does_not_file_it_again()
+    {
+        _controller.InsertDictation("Hello there.");
+        _desktop.Foreground = null;
+        _controller.RepeatLastTranscript();
+        Assert.Empty(_board.Items);
+        Assert.Equal(StatusKind.Warning, _statuses[^1].Kind);
+    }
+
+    [Fact]
+    public void Without_a_board_no_window_still_warns()
+    {
+        _controller.Board = null;
+        _desktop.Foreground = null;
+        _controller.InsertDictation("Something to remember.");
+        Assert.Equal(StatusKind.Warning, _statuses[^1].Kind);
+    }
+
+    [Fact]
     public async Task Without_a_board_the_command_says_so()
     {
         _controller.Board = null;
@@ -118,7 +186,11 @@ public class BoardVoiceTests
     {
         public List<string> Typed { get; } = [];
 
-        public WindowRef? GetForegroundWindow() => Editor;
+        public WindowRef? Foreground { get; set; } = Editor;
+
+        public FieldCheck Field { get; set; } = FieldCheck.Safe;
+
+        public WindowRef? GetForegroundWindow() => Foreground;
 
         public Task<DesktopResult> OpenOrActivateAsync(AppEntry app, bool newWindow, CancellationToken cancellationToken) =>
             Task.FromResult(DesktopResult.Ok("ok", Editor));
@@ -129,7 +201,7 @@ public class BoardVoiceTests
         public Task<TextTargetResult> FocusSearchBoxAsync(WindowRef window, CancellationToken cancellationToken) =>
             Task.FromResult(new TextTargetResult(false, "no"));
 
-        public FieldCheck CheckFocusedField() => FieldCheck.Safe;
+        public FieldCheck CheckFocusedField() => Field;
 
         public bool? FocusedTextEndsWithNonWhitespace() => false;
 
