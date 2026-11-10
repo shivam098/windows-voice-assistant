@@ -1,0 +1,14 @@
+# File Explorer back/forward/up (run with run-explorer.ps1, which opens VaLabParent\VaLabChild in a new window).
+stoponfail
+listen
+say: hey jarvis
+expecttitle: VaLabChild
+say: go up one level
+wait 1000
+expecttitle: VaLabParent
+say: go back
+wait 1000
+expecttitle: VaLabChild
+say: go forward
+wait 1000
+expecttitle: VaLabParent

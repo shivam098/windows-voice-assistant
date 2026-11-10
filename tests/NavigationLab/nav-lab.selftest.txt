@@ -77,3 +77,14 @@ expecttitle: opened Bibhash Morang
 say: click family
 wait 500
 expecttitle: opened Family
+
+# N16: browser back and forward
+say: go back
+wait 600
+expecttitle: opened Bibhash Morang
+say: go to the next page
+wait 600
+expecttitle: opened Family
+say: go to the previous page
+wait 600
+expecttitle: opened Bibhash Morang

@@ -171,6 +171,20 @@ public sealed partial class CommandParser
         ["close tab"] = "Ctrl+W", ["close the tab"] = "Ctrl+W", ["close this tab"] = "Ctrl+W",
         ["next tab"] = "Ctrl+Tab", ["previous tab"] = "Ctrl+Shift+Tab", ["go back"] = "Alt+Left", ["go forward"] = "Alt+Right",
         ["back"] = "Alt+Left", ["forward"] = "Alt+Right",
+
+        // Back/forward in browsers and File Explorer. "Go to the previous page" must not be read as an app called
+        // "previous page"; pagination links ("Next" under search results) are clicked with “click next”.
+        ["previous page"] = "Alt+Left", ["go to previous page"] = "Alt+Left", ["go to the previous page"] = "Alt+Left",
+        ["go back to the previous page"] = "Alt+Left", ["go back a page"] = "Alt+Left", ["go back one page"] = "Alt+Left",
+        ["back page"] = "Alt+Left", ["navigate back"] = "Alt+Left", ["take me back"] = "Alt+Left", ["move back"] = "Alt+Left",
+        ["next page"] = "Alt+Right", ["go to next page"] = "Alt+Right", ["go to the next page"] = "Alt+Right",
+        ["go forward a page"] = "Alt+Right", ["go forward one page"] = "Alt+Right", ["navigate forward"] = "Alt+Right",
+        ["move forward"] = "Alt+Right",
+
+        // File Explorer: the folder that contains this one.
+        ["go up"] = "Alt+Up", ["go up a level"] = "Alt+Up", ["go up one level"] = "Alt+Up", ["up one level"] = "Alt+Up",
+        ["parent folder"] = "Alt+Up", ["go to parent folder"] = "Alt+Up", ["go to the parent folder"] = "Alt+Up",
+        ["open parent folder"] = "Alt+Up", ["open the parent folder"] = "Alt+Up",
         ["refresh"] = "F5", ["reload"] = "F5", ["reload page"] = "F5", ["refresh page"] = "F5", ["refresh the page"] = "F5", ["reload the page"] = "F5",
         ["scroll down"] = "PageDown", ["scroll up"] = "PageUp", ["page down"] = "PageDown", ["page up"] = "PageUp",
     };

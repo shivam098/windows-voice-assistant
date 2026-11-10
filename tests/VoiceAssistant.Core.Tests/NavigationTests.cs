@@ -382,8 +382,13 @@ public class NavigationTests
 
         public ScreenRect? GetWindowRect(WindowRef window) => new(0, 0, 1800, 1200);
 
+        /// <summary>Scans that return nothing before the page's elements appear (a just-activated browser tab).</summary>
+        public int EmptyScansBeforePage { get; set; }
+
+        public int ClickableScans { get; private set; }
+
         public Task<IReadOnlyList<UiElement>> ListClickableAsync(WindowRef window, CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<UiElement>>(Clickable.GetValueOrDefault(window.Handle) ?? []);
+            Task.FromResult<IReadOnlyList<UiElement>>(++ClickableScans <= EmptyScansBeforePage ? [] : Clickable.GetValueOrDefault(window.Handle) ?? []);
 
         public Task<IReadOnlyList<UiElement>> ListTextBoxesAsync(WindowRef window, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<UiElement>>(Boxes.GetValueOrDefault(window.Handle) ?? []);
@@ -458,6 +463,25 @@ public class NavigationTests
     }
 
     private Task Say(string text) => _controller.HandleTranscriptAsync(text, 0.9f);
+
+    [Fact]
+    public async Task Click_in_a_just_activated_browser_tab_waits_for_the_page()
+    {
+        _desktop.Foreground = Chrome;
+        _desktop.Clickable[Chrome.Handle] = [new UiElement(500, "Library", ElementRole.Button, R(20, 300))];
+        _desktop.EmptyScansBeforePage = 2;
+        await Say("Click Library.");
+        Assert.Equal(["click:500"], _desktop.Actions);
+        Assert.Equal(3, _desktop.ClickableScans);
+    }
+
+    [Fact]
+    public async Task Click_outside_browsers_does_not_rescan()
+    {
+        await Say("Click Settings.");
+        Assert.Empty(_desktop.Actions);
+        Assert.Equal(1, _desktop.ClickableScans);
+    }
 
     [Fact]
     public async Task Open_chrome_first_tab_then_start_typing()

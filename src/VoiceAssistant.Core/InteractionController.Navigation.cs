@@ -141,7 +141,26 @@ public sealed partial class InteractionController
         }
 
         var elements = await _desktop.ListClickableAsync(window, ct).ConfigureAwait(false);
-        switch (TargetResolver.ResolveElement(elements, target, _desktop.GetWindowRect(window), minScore))
+        var resolution = TargetResolver.ResolveElement(elements, target, _desktop.GetWindowRect(window), minScore);
+
+        // Browsers build a tab's page elements only after the tab is shown, so right after "go to the second tab"
+        // the page can still be missing for a moment: look again before saying it isn't there.
+        if (resolution is Resolution<UiElement>.None && _apps.FindProfileForProcess(window.ProcessName, window.Title)?.AddressBarKeys is not null)
+        {
+            for (var attempt = 0; attempt < 3 && resolution is Resolution<UiElement>.None; attempt++)
+            {
+                await Task.Delay(400, ct).ConfigureAwait(false);
+                if (!window.SameWindow(_desktop.GetForegroundWindow()))
+                {
+                    break;
+                }
+
+                elements = await _desktop.ListClickableAsync(window, ct).ConfigureAwait(false);
+                resolution = TargetResolver.ResolveElement(elements, target, _desktop.GetWindowRect(window), minScore);
+            }
+        }
+
+        switch (resolution)
         {
             case Resolution<UiElement>.Single single:
                 return await ActOnElementAsync(single.Item, window, heard, ct).ConfigureAwait(false);
@@ -369,7 +388,7 @@ public sealed partial class InteractionController
         box.Name.Contains("address", StringComparison.OrdinalIgnoreCase) || box.Name.Contains("URL", StringComparison.Ordinal);
 
     private static readonly HashSet<string> TabChangingChords = new(StringComparer.OrdinalIgnoreCase)
-        { "Ctrl+T", "Ctrl+W", "Ctrl+Tab", "Ctrl+Shift+Tab", "Alt+Left", "Alt+Right", "F5" };
+        { "Ctrl+T", "Ctrl+W", "Ctrl+Tab", "Ctrl+Shift+Tab", "Alt+Left", "Alt+Right", "Alt+Up", "F5" };
 
     /// <summary>Commands after which the old typing target may show different content (another tab, page or app).</summary>
     private static bool MovesAway(VoiceCommand command) => command.Kind switch
