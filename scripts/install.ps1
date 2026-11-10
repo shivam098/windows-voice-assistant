@@ -185,7 +185,12 @@ if (-not $NoLaunch) {
 }
 
 Write-Host ''
-Write-Host 'Installed. The Voice Assistant window opens; closing it keeps the assistant running in the system tray.' -ForegroundColor Green
+if ($NoLaunch) {
+    Write-Host 'Installed. Start Voice Assistant from the Start menu; closing its window keeps it running in the system tray.' -ForegroundColor Green
+}
+else {
+    Write-Host 'Installed. The Voice Assistant window opens; closing it keeps the assistant running in the system tray.' -ForegroundColor Green
+}
 Write-Host '  Dictate anywhere: hold Ctrl+Win, speak, release (Ctrl+Win+Space = hands-free)'
 Write-Host '  Voice commands:   "Hey Jarvis, open Notepad" -> "Start typing" -> speak -> "Stop typing"'
 Write-Host '  Idea board:       "Hey Jarvis, add buy milk to my to-do list" / "remind me at 5 pm to call Mom"'
