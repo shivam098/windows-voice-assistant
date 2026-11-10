@@ -21,6 +21,9 @@ public static class LabWindow {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  public static int ProcessOf(IntPtr h) { uint pid; GetWindowThreadProcessId(h, out pid); return (int)pid; }
   [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
   public static bool BringToFront(IntPtr h) {
     for (int i = 0; i < 5; i++) {
@@ -46,16 +49,21 @@ function Get-LabWindow([string] $profileMarker) {
 }
 
 $here = $PSScriptRoot
-$host_ = Start-Process pwsh -ArgumentList "-NoProfile -STA -ExecutionPolicy Bypass -File `"$(Join-Path $here 'edit-host.ps1')`"" -PassThru -WindowStyle Hidden
+# pwsh hides its own console; the test form itself is shown normally.
+$host_ = Start-Process pwsh -ArgumentList "-NoProfile -STA -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$(Join-Path $here 'edit-host.ps1')`"" -PassThru
 try {
     $window = [IntPtr]::Zero
     Add-Type -Namespace EditLab -Name Win -MemberDefinition '[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);'
     for ($i = 0; $i -lt 60 -and $window -eq [IntPtr]::Zero; $i++) {
         Start-Sleep -Milliseconds 250
-        $window = [EditLab.Win]::FindWindow($null, 'Edit Lab')
+        $window = [EditLab.Win]::FindWindow([NullString]::Value, 'Edit Lab') # $null would arrive as "", a class name
     }
 
-    if ($window -eq [IntPtr]::Zero -or -not [LabWindow]::BringToFront($window)) { throw 'The test window could not be brought to the front; nothing was run.' }
+    if ($window -eq [IntPtr]::Zero -or -not [LabWindow]::BringToFront($window)) {
+        $front = [LabWindow]::GetForegroundWindow()
+        $owner = (Get-Process -Id ([LabWindow]::ProcessOf($front)) -ErrorAction SilentlyContinue).ProcessName
+        throw "The test window could not be brought to the front (found: $($window -ne [IntPtr]::Zero), visible: $([LabWindow]::IsWindowVisible($window)), in front: $owner); nothing was run."
+    }
     $out = Join-Path $env:TEMP 'va-editlab.out.txt'
     Remove-Item $out -ErrorAction SilentlyContinue
     $p = Start-Process $Exe -ArgumentList "--self-test `"$(Join-Path $here 'editing-lab.selftest.txt')`" `"$out`"" -PassThru
