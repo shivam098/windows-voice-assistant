@@ -1,0 +1,22 @@
+# Spoken edits (docs/specs/voice-commands.md, "Editing what you typed"). Run with tests/EditingLab/run.ps1.
+stoponfail
+listen
+say: hey jarvis
+expecttitle: Edit Lab
+expectfocus: Message
+say: start typing
+say: Hello there, my good friend and family.
+expectvalue: Hello there, my good friend and family.
+say: delete the last two words
+expectvalue: Hello there, my good friend
+say: and colleagues.
+expectvalue: Hello there, my good friend and colleagues.
+say: The review is on Monday at noon.
+say: replace the word Monday with Tuesday
+expectvalue: Hello there, my good friend and colleagues. The review is on Tuesday at noon.
+say: delete the word noon
+expectvalue: Hello there, my good friend and colleagues. The review is on Tuesday at.
+say: delete the last sentence
+expectvalue: Hello there, my good friend and colleagues.
+say: scratch that
+say: stop typing

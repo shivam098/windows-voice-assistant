@@ -61,6 +61,32 @@ Ties go to configured apps, then to the clearly most-used app; otherwise “Whic
 | “pause listening”, “stop listening”, “go to sleep”, “pause” | Microphone off |
 | “press *key*” | Press it |
 
+### Editing what you typed
+
+Works while typing (no wake word needed for these exact forms) and, after the wake word, in the focused text field.
+The text before the cursor is read with the platform's accessibility API (Windows: UI Automation TextPattern, else
+the field's value with the cursor assumed at the end), and the edit is made with keys: Left over the text after the
+change, Backspace, type, Right back. Edits never reach more than 3,000 characters back.
+
+| Say | Does |
+|---|---|
+| “delete the last word”, “delete the last three words”, “delete 3 words”, “delete the last few words” (3), “…couple of…” (2) | Remove that many words before the cursor (a word keeps its punctuation: “world.”), plus the space before them |
+| “delete the last sentence”, “erase the previous two sentences”, “delete that sentence” | Back to the previous “. ”, “? ”, “! ” or line break |
+| “delete the last line”, “delete the last paragraph” | The whole line (and the line break before it) / back to the previous blank line |
+| “delete the last 5 characters / letters” | Characters (emoji count as one) |
+| “delete the word *very*”, “remove the words *as soon as possible*” | The last whole-word match before the cursor, with one neighbouring space |
+| “replace the word *Monday* with *Tuesday*” | Replace the last match; the replacement keeps what was said (“GitHub Actions”) and a capital at the start of a sentence |
+| After the wake word: “replace *X* with *Y*”, “change *X* to *Y*”, “delete *X*” | Same, without “the word” (while typing without the wake word these are ordinary sentences) |
+
+“scratch the last line”, “undo the last word” also work. Counts are 1–50. If the text can't be read, “delete the last N
+words” falls back to Ctrl+Backspace and “… characters” to Backspace (only while typing); anything else says the box
+can't be read.
+
+Safety: nothing is edited while text is selected (typing would replace the selection), in read-only text (pages,
+terminal output), or — outside typing — in a field that couldn't be checked. When a field exposes only its whole value
+(no cursor position), it is trusted only while it still ends with what was just typed; a cursor moved by clicking
+without typing can't be detected there.
+
 ### Keys and shortcuts (Command mode)
 
 | Say | Keys |

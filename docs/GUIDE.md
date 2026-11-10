@@ -47,6 +47,7 @@ Say punctuation (“comma”, “question mark”, “new line”); “um/uh” 
    "Hey Jarvis, can you open GitHub Copilot and start typing" → speak → "Send"
    ```
 3. While typing (red pill), pause briefly before a command: “send”, “scratch that”, “clear box”, “new line”, “stop typing”.
+   To fix part of what you typed: “delete the last two words”, “delete the last sentence”, “delete the last line”, “delete the word very”, “replace the word Monday with Tuesday”.
 4. Pause the microphone with `Ctrl` + `Alt` + `Space`, a left-click on the tray icon, or “Hey Jarvis, pause listening”.
 
 Speak naturally — “can you please open Notepad for me” works. If it doesn't understand something, say it another way within 30 seconds and it remembers the first phrase next time (tray → **Forget what I've learned** to reset).

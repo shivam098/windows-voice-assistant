@@ -46,6 +46,9 @@ public sealed partial class InteractionController
     private readonly ControllerOptions _options;
     private readonly PhraseMemory? _memory;
     private readonly Stack<int> _segments = new();
+
+    /// <summary>The end of what was last typed (or left after an edit), to trust a field's text only while it still ends this way.</summary>
+    private string? _typedTail;
     private WindowRef? _target;
     private AppEntry? _targetProfile;
     private bool _boxHadText;
@@ -379,6 +382,7 @@ public sealed partial class InteractionController
                 }
 
                 _desktop.Backspace(_segments.Pop());
+                _typedTail = null;
                 _needsLeadingSpace = _segments.Count > 0 || _boxHadText;
                 Report(StatusKind.Success, "Removed the last phrase.", heard);
                 return true;
@@ -392,6 +396,7 @@ public sealed partial class InteractionController
                 _desktop.PressKeys("Ctrl+A");
                 _desktop.Backspace(1);
                 _segments.Clear();
+                _typedTail = null;
                 _boxHadText = false;
                 _needsLeadingSpace = false;
                 _endsSentence = true;
@@ -461,9 +466,147 @@ public sealed partial class InteractionController
                 Report(StatusKind.Info, hadPending ? "Cancelled." : "Nothing to cancel.", heard);
                 return hadPending;
 
+            case CommandKind.DeleteText:
+            case CommandKind.ReplaceText:
+                return EditText(command.Edit ?? new TextEdit(), heard);
+
             default:
                 return false;
         }
+    }
+
+    /// <summary>
+    /// “delete the last 3 words”, “delete the word very”, “replace Monday with Tuesday” in the field being typed in
+    /// (or, when not typing, the focused field). The text before the cursor decides exactly what to erase; without it,
+    /// only “last N words” works (Ctrl+Backspace), the rest say why.
+    /// </summary>
+    private bool EditText(TextEdit edit, string heard)
+    {
+        var typing = Mode == InteractionMode.Dictation;
+        if (typing ? !EnsureTargetFocused(heard, null) : _desktop.GetForegroundWindow() is null)
+        {
+            if (!typing)
+            {
+                Report(StatusKind.Warning, "There's no window in front.", heard);
+            }
+
+            return false;
+        }
+
+        // Outside typing, the focused field must be positively checked: keys sent to a file list or a page do other things.
+        if (!CheckField(heard, null, allowUnknown: typing))
+        {
+            return false;
+        }
+
+        var caret = _desktop.ReadTextBeforeCaret();
+        if (caret is { HasSelection: true })
+        {
+            Report(StatusKind.Warning, "Some text is selected. Click where you want to edit (or say “press right”), then say it again.", heard);
+            return false;
+        }
+
+        if (caret is { Editable: false })
+        {
+            Report(StatusKind.Warning, "That isn't a text box I can edit.", heard);
+            return false;
+        }
+
+        // When only the whole text is readable, trust "the cursor is at the end" only if it ends with what was just typed.
+        var before = caret is null ? null
+            : caret.CaretKnown ? caret.Before
+            : typing && _typedTail is { Length: > 0 } tail && TextEditing.NormalizeNewLines(caret.Before).TrimEnd().EndsWith(tail, StringComparison.Ordinal) ? caret.Before
+            : null;
+        if (before is null)
+        {
+            if (typing && edit.Phrase is null && edit.Unit == EditUnit.Word)
+            {
+                _desktop.PressKeysRepeated("Ctrl+Backspace", edit.Count);
+                ForgetTypedLengths();
+                Report(StatusKind.Success, edit.Count == 1 ? "Deleted the last word." : $"Deleted the last {edit.Count} words.", heard);
+                return true;
+            }
+
+            if (typing && edit.Phrase is null && edit.Unit == EditUnit.Character)
+            {
+                _desktop.Backspace(edit.Count);
+                ForgetTypedLengths();
+                Report(StatusKind.Success, edit.Count == 1 ? "Deleted the last character." : $"Deleted the last {edit.Count} characters.", heard);
+                return true;
+            }
+
+            Report(StatusKind.Warning, "I can't read the text in this box, so I can't find that. Say “delete the last 3 words” or “press backspace”.", heard);
+            return false;
+        }
+
+        var plan = edit.Phrase is null
+            ? TextEditing.DeleteLast(before, edit.Unit, edit.Count)
+            : TextEditing.ReplaceLast(before, edit.Phrase, edit.Replacement);
+        if (plan is null)
+        {
+            Report(
+                StatusKind.Warning,
+                edit.Phrase is null ? "There's nothing before the cursor to delete (or it's too far back)." : $"I couldn't find “{Short(edit.Phrase, 40)}” before the cursor.",
+                heard);
+            return false;
+        }
+
+        if (plan.KeepAfter > 0)
+        {
+            _desktop.PressKeysRepeated("Left", plan.KeepAfter);
+        }
+
+        // Select, then delete or type over the selection: the arrow keys move in the app's own units.
+        _desktop.PressKeysRepeated("Shift+Left", plan.Delete);
+        if (plan.Insert.Length > 0)
+        {
+            _desktop.TypeText(plan.Insert);
+        }
+        else
+        {
+            _desktop.Backspace(1);
+        }
+
+        if (plan.KeepAfter > 0)
+        {
+            _desktop.PressKeysRepeated("Right", plan.KeepAfter);
+        }
+
+        ForgetTypedLengths();
+        var rest = plan.TextAfterEdit;
+        _typedTail = Tail(rest);
+        _boxHadText = rest.Length > 0;
+        _needsLeadingSpace = rest.Length > 0 && !char.IsWhiteSpace(rest[^1]);
+        _endsSentence = rest.TrimEnd(' ').Length == 0 || rest.TrimEnd(' ')[^1] is '.' or '!' or '?' or '\n' or ':';
+        Report(StatusKind.Success, DescribeEdit(edit), heard);
+        return true;
+    }
+
+    /// <summary>Lengths of earlier phrases no longer match the text, so "scratch that" can't undo by length any more.</summary>
+    private void ForgetTypedLengths()
+    {
+        _segments.Clear();
+        _typedTail = null;
+    }
+
+    /// <summary>The end of the text, trimmed, to recognise “the cursor is still where I typed” later.</summary>
+    private static string? Tail(string text)
+    {
+        var trimmed = TextEditing.NormalizeNewLines(text).TrimEnd();
+        return trimmed.Length == 0 ? null : trimmed[Math.Max(0, trimmed.Length - 40)..];
+    }
+
+    private static string DescribeEdit(TextEdit edit)
+    {
+        if (edit.Phrase is not null)
+        {
+            return edit.Replacement is null
+                ? $"Deleted “{Short(edit.Phrase, 40)}”."
+                : $"Replaced “{Short(edit.Phrase, 30)}” with “{Short(edit.Replacement, 30)}”.";
+        }
+
+        var unit = edit.Unit.ToString().ToLowerInvariant();
+        return edit.Count == 1 ? $"Deleted the last {unit}." : $"Deleted the last {edit.Count} {unit}s.";
     }
 
     private string NewLineKeys => _targetProfile?.NewLineKeys ?? "Shift+Enter";
@@ -605,6 +748,7 @@ public sealed partial class InteractionController
         _target = window;
         _targetProfile = profile;
         _segments.Clear();
+        _typedTail = null;
         _boxHadText = boxHadText;
         _needsLeadingSpace = boxHadText;
         _endsSentence = true;
@@ -636,6 +780,7 @@ public sealed partial class InteractionController
 
         // Keys can move the caret or change the text, so earlier phrases can no longer be undone by length.
         _segments.Clear();
+        _typedTail = null;
         Report(StatusKind.Success, $"Pressed {chord}.", heard);
         return true;
     }
@@ -662,6 +807,7 @@ public sealed partial class InteractionController
 
         _desktop.PressKeys(submitKeys);
         _segments.Clear();
+        _typedTail = null;
         _boxHadText = false;
         _needsLeadingSpace = false;
         _endsSentence = true;
@@ -695,6 +841,7 @@ public sealed partial class InteractionController
 
         var toType = _needsLeadingSpace && formatted[0] != '\n' ? " " + formatted : formatted;
         _segments.Push(TypeWithNewLines(toType, NewLineKeys));
+        _typedTail = Tail(toType) ?? _typedTail;
         _needsLeadingSpace = !char.IsWhiteSpace(toType[^1]);
         _endsSentence = toType[^1] is '.' or '!' or '?' or '\n' or ':';
         LastTranscript = formatted;
@@ -722,6 +869,7 @@ public sealed partial class InteractionController
 
         // Push-to-talk text isn't part of the voice “scratch that” history.
         _segments.Clear();
+        _typedTail = null;
         LastTranscript = formatted;
         Report(StatusKind.Success, "Typed.", heard);
     }

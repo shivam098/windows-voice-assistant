@@ -232,8 +232,87 @@ internal sealed partial class WindowsDesktop : IDesktop
     {
         if (count > 0)
         {
+            KeyboardInput.WaitForModifiersReleased();
             KeyboardInput.Repeat(0x08, count);
         }
+    }
+
+    public void PressKeysRepeated(string chord, int count)
+    {
+        KeyboardInput.WaitForModifiersReleased();
+        var keys = KeyboardInput.ParseChord(chord);
+        if (keys.Count == 1)
+        {
+            KeyboardInput.Repeat(keys[0], count);
+            return;
+        }
+
+        for (var i = 0; i < count; i++)
+        {
+            KeyboardInput.PressChord(chord);
+        }
+    }
+
+    public CaretText? ReadTextBeforeCaret()
+    {
+        try
+        {
+            var read = Task.Run(() => ReadTextBeforeCaret(Focused()));
+            return read.Wait(1500) ? read.Result : null;
+        }
+        catch (AggregateException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// TextPattern: the document from its start to the cursor (exact). ValuePattern only: the whole value, with the
+    /// cursor position unknown. Password fields are never read.
+    /// </summary>
+    private static CaretText? ReadTextBeforeCaret(AutomationElement? element)
+    {
+        const int MaxChars = 20000;
+        if (element is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            if (element.Current.IsPassword)
+            {
+                return null;
+            }
+
+            var editable = IsEditable(element);
+            if (element.TryGetCurrentPattern(TextPattern.Pattern, out var textPattern))
+            {
+                var text = (TextPattern)textPattern;
+                var selection = text.GetSelection();
+                if (selection.Length > 0)
+                {
+                    var caret = selection[0];
+                    var hasSelection = caret.CompareEndpoints(System.Windows.Automation.Text.TextPatternRangeEndpoint.Start, caret, System.Windows.Automation.Text.TextPatternRangeEndpoint.End) != 0;
+                    var range = text.DocumentRange.Clone();
+                    range.MoveEndpointByRange(System.Windows.Automation.Text.TextPatternRangeEndpoint.End, caret, System.Windows.Automation.Text.TextPatternRangeEndpoint.Start);
+                    var value = range.GetText(-1);
+                    return new CaretText(value.Length > MaxChars ? value[^MaxChars..] : value, CaretKnown: true, hasSelection, editable);
+                }
+            }
+
+            if (element.TryGetCurrentPattern(ValuePattern.Pattern, out var valuePattern))
+            {
+                var value = ((ValuePattern)valuePattern).Current.Value;
+                return new CaretText(value.Length > MaxChars ? value[^MaxChars..] : value, CaretKnown: false, Editable: editable);
+            }
+        }
+        catch (Exception ex) when (ex is ElementNotAvailableException or InvalidOperationException or ArgumentException or System.Runtime.InteropServices.COMException)
+        {
+            Log.Warn($"read text before cursor failed: {ex.GetType().Name}");
+        }
+
+        return null;
     }
 
     private static TextTargetResult FocusSearchBox(WindowRef window)
