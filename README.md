@@ -174,6 +174,8 @@ Every click is outlined briefly so you can see what happened. It works with apps
 | `snippets` | `{}` | e.g. `{ "my signature": "Thanks,\nShivam" }` |
 | `modelFile` | `ggml-small.en-q8_0.bin` | In `%LOCALAPPDATA%\VoiceAssistant\models` |
 | `endSilenceMs` | `600` | Pause that ends a phrase |
+| `dictationEndSilenceMs` | `1100` | While voice typing, the pause that ends a phrase (longer, so a thinking pause doesn't split a sentence into separately punctuated pieces) |
+| `dictationVocabulary` | `["GitHub Copilot", "vibe coding", "iterate", …]` | Words you use often: a spelling hint for the accurate Hindi + English model (“vibe coding”, not “wife coding”) |
 | `maxCommandUtteranceMs` | `6000` | Longer speech while waiting for a command is skipped |
 | `hotkey` | `Ctrl+Alt+Space` | Pause/resume listening |
 | `apps` | Copilot, Notepad, Chrome, Edge, Firefox | Per-app launch, `submitKeys`, `newLineKeys`, `textArea` (`Bottom`/`Largest`), `textAreaName`, `searchKeys`, `newWindowKeys`, `newDocumentKeys` |

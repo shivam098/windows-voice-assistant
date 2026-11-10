@@ -99,6 +99,12 @@ internal sealed class AssistantHost : IDisposable
         {
             PlayTransitionCue(_mode, update.Mode);
             _mode = update.Mode;
+
+            // Typing tolerates longer thinking pauses before a phrase ends; commands stay snappy.
+            if (_segmenter is { } segmenter)
+            {
+                segmenter.LongPauseMs = update.Mode == InteractionMode.Dictation ? _settings.DictationEndSilenceMs : 0;
+            }
             Post(() => Status?.Invoke(update));
         };
         _controller.PauseRequested += () =>
@@ -382,6 +388,12 @@ internal sealed class AssistantHost : IDisposable
             {
                 var result = await recognizer.TranscribeAsync(chunk, _shutdown.Token).ConfigureAwait(false);
                 Log.Info($"dictation chunk audio={chunk.Length * 1000 / SampleRate}ms asr={result.Elapsed.TotalMilliseconds:F0}ms{(recognizer == _hinglishAccurate ? " model=hinglish-accurate" : recognizer == _hinglish ? " model=hinglish" : string.Empty)}");
+                if (recognizer == _hinglishAccurate && IsPromptEcho(result.Text))
+                {
+                    Log.Info("dropped a repeat of the vocabulary hint");
+                    continue;
+                }
+
                 parts.Add(TranscriptText.Clean(result.Text));
             }
 
@@ -462,6 +474,24 @@ internal sealed class AssistantHost : IDisposable
     /// <summary>The model that types Hindi + English text: the accurate one when chosen and loaded, else the fast one.</summary>
     private WhisperRecognizer? HinglishForTyping() =>
         _hinglishAccurateMode && _hinglishAccurate is { } accurate ? accurate : _hinglish;
+
+    /// <summary>The user's vocabulary as a Whisper prompt (“GitHub Copilot, vibe coding, …”); null when empty.</summary>
+    private string? VocabularyPrompt
+    {
+        get
+        {
+            var words = (_settings.DictationVocabulary ?? []).Select(w => w.Trim()).Where(w => w.Length > 0).Take(40).ToList();
+            return words.Count == 0 ? null : string.Join(", ", words);
+        }
+    }
+
+    /// <summary>On near-silence Whisper can repeat its prompt; such text is dropped instead of typed.</summary>
+    private bool IsPromptEcho(string text)
+    {
+        var prompt = VocabularyPrompt;
+        var heard = TranscriptText.Normalize(text);
+        return prompt is not null && heard.Length > 0 && TranscriptText.Normalize(prompt).Contains(heard, StringComparison.Ordinal);
+    }
 
     /// <summary>
     /// Frees the accurate model when that mode is no longer chosen. Runs on the work queue, where every use of it
@@ -779,6 +809,9 @@ internal sealed class AssistantHost : IDisposable
             {
                 Threads = _settings.Threads,
                 AudioContextSize = _settings.AudioContextSize,
+
+                // Measured: a word list helps the accurate model spell jargon but makes the fast one output garbage.
+                Prompt = accurate ? VocabularyPrompt : null,
             });
             try
             {
@@ -919,10 +952,12 @@ internal sealed class AssistantHost : IDisposable
                 return;
             }
 
-            // Silero drops music/noise and splits phrases that background sound merged together.
+            // Silero drops music/noise and splits phrases that background sound merged (at the same pause length
+            // the segmenter uses, so a typing pause doesn't split a sentence here either).
+            var pause = _mode == InteractionMode.Dictation ? Math.Max(_settings.EndSilenceMs, _settings.DictationEndSilenceMs) : _settings.EndSilenceMs;
             IReadOnlyList<float[]> pieces = _detector is null
                 ? [utterance.Samples]
-                : SpeechSegments.Split(utterance.Samples, _detector.Detect(utterance.Samples), SampleRate, _settings.EndSilenceMs, 250);
+                : SpeechSegments.Split(utterance.Samples, _detector.Detect(utterance.Samples), SampleRate, pause, 250);
             if (pieces.Count == 0)
             {
                 Log.Info($"no speech in {utterance.Samples.Length * 1000 / SampleRate}ms utterance");
@@ -981,7 +1016,9 @@ internal sealed class AssistantHost : IDisposable
         {
             var typed = await hinglish.TranscribeAsync(samples, cancel.Token).ConfigureAwait(false);
             Log.Info($"utterance hinglish asr={typed.Elapsed.TotalMilliseconds:F0}ms");
-            return audioMs < 2500 && KnownHallucinations.Contains(TranscriptText.Normalize(typed.Text)) ? string.Empty : typed.Text;
+            return (audioMs < 2500 && KnownHallucinations.Contains(TranscriptText.Normalize(typed.Text))) || (hinglish == _hinglishAccurate && IsPromptEcho(typed.Text))
+                ? string.Empty
+                : typed.Text;
         };
 
         await _controller.HandleTranscriptAsync(result.Text, result.Probability, followsForcedCut, cancel.Token, dictation).ConfigureAwait(false);

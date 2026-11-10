@@ -82,6 +82,12 @@ leading space when the box already ends in a non-space character.
 - **Commands always use the English model.** In voice typing, each phrase is first parsed with the English model;
   only if it's not a command is the Hindi model asked for the text to type.
 - Each push-to-talk recording keeps the model it started with, even if the language is switched mid-recording.
+- **Vocabulary hint:** the accurate model gets the user's word list (`dictationVocabulary`) as its Whisper prompt, which
+  measurably fixes jargon (“vibe code”, “GitHub Copilot”). The fast model never gets it: with a prompt it outputs
+  garbage (“while,”). Output that only repeats the word list is dropped (on noise and silence it wasn't seen in tests).
+- **Phrase length while voice typing:** a phrase ends after ~1.1 s of quiet instead of 0.6 s, because Whisper punctuates
+  each phrase as a complete sentence; shorter phrases meant stray full stops and capitals mid-sentence. For long
+  passages, push-to-talk (whole recording at once) gives the best punctuation.
 
 ## Paste last / untyped text
 
