@@ -36,6 +36,7 @@ typing carries on afterwards.
 | “Add to my reminders, pay rent tomorrow” | Reminders: *Pay rent*, due tomorrow 9:00 |
 
 Verbs: add, put, save, write, note, jot. Prepositions: to, in, into, on, onto, under. Optional “my”, “the”, “our”.
+Leading filler is ignored: “and”, “also”, “so”, “um”, “okay”, “can you (please)” (“and add to my reminders, …”).
 
 With push-to-talk the list must also be clearly *yours*: “my” or “our” before it, or a name only the board uses (ideas,
 brainstorm, reminders). So “put the agenda on the board”, “add these to the tasks” and “please add the action items to

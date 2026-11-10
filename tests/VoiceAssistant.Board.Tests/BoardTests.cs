@@ -105,6 +105,19 @@ public class BoardTests
     // ---- reminder times ----
 
     [Theory]
+    [InlineData("and add to my reminder, I have to draft a reply to Tata", BoardList.Reminders, "I have to draft a reply to Tata")]
+    [InlineData("Um, add to my ideas, a voice game", BoardList.Ideas, "A voice game")]
+    [InlineData("Also add renew passport to my to-do list.", BoardList.Todo, "Renew passport")]
+    [InlineData("Can you please add to my brainstorm list, pricing", BoardList.Brainstorm, "Pricing")]
+    [InlineData("So, and add to my reminders: pay rent", BoardList.Reminders, "Pay rent")]
+    public void Leading_filler_words_are_ignored(string spoken, BoardList list, string text)
+    {
+        var intent = BoardGrammar.Parse(spoken, Now, explicitOnly: true);
+        Assert.Equal(list, intent?.List);
+        Assert.Equal(text, intent?.Text);
+    }
+
+    [Theory]
     [InlineData("Please add the action items to the notes.")]
     [InlineData("Put the agenda on the board.")]
     [InlineData("Write your name on the board.")]

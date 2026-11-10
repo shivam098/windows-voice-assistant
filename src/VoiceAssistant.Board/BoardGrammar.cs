@@ -130,7 +130,8 @@ public static partial class BoardGrammar
         [.. WordRegex().Matches(text.ToLowerInvariant()).Select(m => m.Value).Where(w => w.Length > 1 && w is not ("the" or "my" or "to" or "a" or "an" or "and"))];
 
     private const string List = @"(?<list>idea\s+board|ideas?(?:\s+list)?|board|brain\s?storm(?:ing)?(?:\s+(?:list|board|ideas))?|to[\s-]?do(?:\s+list)?|to[\s-]?dos|todos?|task\s+list|tasks|reminders?(?:\s+list)?|notes?)";
-    private const string Lead = @"^(?:please\s+|okay\s+|ok\s+|so\s+)?";
+    // Recognisers often start a phrase with a joining or filler word ("and add to my reminders …", "um, can you …").
+    private const string Lead = @"^(?:(?:please|okay|ok|so|and|also|now|then|um|uh|oh|hey|alright|right)[\s,.]+|(?:can|could|would|will)\s+you(?:\s+please)?[\s,]+)*";
     private const string Sep = @"[\s,:;.\-–—]+";
 
     // "add to my ideas: a voice game", "put this on my to-do list, renew passport"
