@@ -22,7 +22,14 @@ public static partial class BoardGrammar
 {
     public static BoardIntent? Parse(string spoken, DateTimeOffset now, bool explicitOnly = false)
     {
-        var text = spoken.Trim();
+        var text = spoken.Trim().Replace('’', '\'');
+
+        // "Can you add the slides to our tasks" with push-to-talk is a request to a colleague, typed as dictation.
+        if (explicitOnly && AskingSomeoneRegex().IsMatch(text))
+        {
+            return null;
+        }
+
         var m = AddToListFirstRegex().Match(text);
         if (!m.Success)
         {
@@ -75,6 +82,51 @@ public static partial class BoardGrammar
         return null;
     }
 
+    /// <summary>
+    /// Where dictation goes when there's no text box to type it into, or null if there's nothing to keep. A request that
+    /// names a list or says “remind me” / “note down” is honoured. Otherwise only text that is clearly a task is filed as
+    /// one: “I have to / need to / should …”, “don't forget to …”, “to-do: …”, or an instruction starting with a common
+    /// action verb (“call the bank …”). A task with a future time is a reminder; without one, a to-do. Everything else,
+    /// including sentences that just mention a time (“the demo today went well”), is an idea, kept word for word.
+    /// </summary>
+    public static BoardIntent? ForDictation(string text, DateTimeOffset now, TimeZoneInfo? zone = null)
+    {
+        text = text.Trim().Replace('’', '\'');
+        if (BoardStore.Tidy(text).Length == 0)
+        {
+            return null;
+        }
+
+        if (Parse(text, now) is { Action: BoardAction.Add } asked)
+        {
+            return asked;
+        }
+
+        var lead = TodoRegex().Match(text);
+        var task = lead.Success ? lead.Groups["text"].Value : ActionRegex().IsMatch(text) ? text : null;
+        if (task is null || BoardStore.Tidy(task).Length == 0)
+        {
+            return new BoardIntent(BoardAction.Add, BoardList.Ideas, BoardStore.Tidy(text));
+        }
+
+        var (withoutTime, due) = ReminderTime.Parse(task, now, zone);
+        if (due > now && BoardStore.Tidy(withoutTime).Length > 0)
+        {
+            return new BoardIntent(BoardAction.Add, BoardList.Reminders, BoardStore.Tidy(withoutTime), due);
+        }
+
+        return new BoardIntent(BoardAction.Add, BoardList.Todo, BoardStore.Tidy(task));
+    }
+
+    [GeneratedRegex(Lead + @"(?:(?:i|we)(?:\s+(?:have\s+to|need\s+to|must|should|ought\s+to|gotta|got\s+to|have\s+got\s+to)|'ve\s+got\s+to|'ll\s+have\s+to)|(?:don't|do\s+not)\s+forget(?:\s+to)?|remember\s+to|to[\s-]?do\s*[,:;.\-–—])\s*(?<text>.+)$", RegexOptions.IgnoreCase)]
+    private static partial Regex TodoRegex();
+
+    // An instruction to yourself: starts with a common action verb ("call the bank", "buy milk", "email Priya").
+    [GeneratedRegex(Lead + @"(?:call|phone|ring|email|e-mail|mail|text|message|ping|reply|respond|send|pay|buy|order|book|schedule|reschedule|cancel|renew|submit|file|review|check|finish|complete|fix|update|prepare|draft|write|read|clean|wash|water|pick\s+up|drop\s+off|collect|return|visit|meet|ask|tell|follow\s+up|confirm|sign|print|backup|back\s+up|charge|recharge|register|apply|transfer|deposit|withdraw)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex ActionRegex();
+
+    [GeneratedRegex(@"^(?:(?:please|okay|ok|so|and|also|now|then|um|uh|oh|hey|alright|right)[\s,.]+)*(?:can|could|would|will)\s+you\b", RegexOptions.IgnoreCase)]
+    private static partial Regex AskingSomeoneRegex();
     /// <summary>The open item whose words best cover what was said (most recent on a tie); null below 60 %.</summary>
     public static BoardItem? BestMatch(IEnumerable<BoardItem> items, string spoken)
     {

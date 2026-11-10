@@ -78,6 +78,8 @@ navigation scenarios run with `tests/NavigationLab/run.ps1`.
 | B11 | “Hey Jarvis, tick the checkbox” on a page with one | Not a board request (no “couldn't find” warning on the board) |
 | B12 | Add a reminder for 1 minute, exit, wait 2 minutes, start the app | The missed reminder pops up at start |
 | B13 | Settings: change “Pause that ends a phrase” to 1500, Save and restart | App restarts; the value is in `settings.json` |
+| B14 | Click the desktop; hold push-to-talk: “I have to draft a reply to Tata Neu” | Nothing typed; To-do gets “Draft a reply to Tata Neu”; pill: “No text box, so I saved it…” |
+| B15 | A list has focus (`tests/EditingLab/run.ps1 -Lab NoTextBox`); push-to-talk an idea, a to-do and a timed reminder | Each lands in Ideas, To-do, Reminders; nothing typed |
 
 B5–B6 and B10–B11 are also covered by unit tests (`tests/VoiceAssistant.Board.Tests`, `BoardVoiceTests`).
 

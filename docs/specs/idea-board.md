@@ -36,7 +36,8 @@ typing carries on afterwards.
 | “Add to my reminders, pay rent tomorrow” | Reminders: *Pay rent*, due tomorrow 9:00 |
 
 Verbs: add, put, save, write, note, jot. Prepositions: to, in, into, on, onto, under. Optional “my”, “the”, “our”.
-Leading filler is ignored: “and”, “also”, “so”, “um”, “okay”, “can you (please)” (“and add to my reminders, …”).
+Leading filler is ignored: “and”, “also”, “so”, “um”, “okay”, “can you (please)” (“and add to my reminders, …”). With
+push-to-talk, “can / could / would / will you …” means you're asking someone else, so it is typed.
 
 With push-to-talk the list must also be clearly *yours*: “my” or “our” before it, or a name only the board uses (ideas,
 brainstorm, reminders). So “put the agenda on the board”, “add these to the tasks” and “please add the action items to
@@ -85,6 +86,34 @@ tomorrow.
 
 A bare number needs “at” or am/pm, so “call 3 people” keeps its 3. A reminder without a time is still filed and never
 pops up.
+
+## Dictation with nowhere to type
+
+When push-to-talk ends and there's **no text box** to type into, the dictation is saved on the board instead of being
+lost. The pill says “No text box, so I saved it. Added to …”.
+
+“No text box” is deliberately narrow, so dictation into apps with unusual text boxes (terminals, editors, spreadsheet
+cells, web apps) is never diverted:
+
+- no app window is in front, or the Voice Assistant window itself is;
+- the desktop or the taskbar is in front, unless you're typing in it (renaming an icon is still typed);
+- focus is on something that positively doesn't take text: a list or list item (files, chats), a tree, a button, a
+  link, a menu, a tab, a checkbox. Anything else, including a focus that can't be checked, still gets the text.
+
+Which list it goes to (only clear tasks become to-dos or reminders; everything else is kept word for word as an idea):
+
+| Dictation | List | Note |
+|---|---|---|
+| Names a list or says “remind me / note down …” | As asked | Same grammar as above |
+| A task: “I/we have to / need to / must / should / I've got to …”, “don't forget to …”, “remember to …”, “to-do: …”, or starts with an action verb (call, email, pay, buy, book, send, renew, review, …) | To-do | Lead-in removed: “Draft a reply to Tata Neu” |
+| A task with a **future** time (“call the bank tomorrow at 11 am”) | Reminders | Time removed from the text |
+| Anything else, even with a time in it (“the demo today went well”, “we met at 10”) | Ideas | As dictated |
+
+Nothing is saved for dictation with no words (“new line” on its own). “Paste last dictation” (`Alt`+`Shift`+`Z`)
+never files to the board.
+
+With push-to-talk into a text box, a request that starts “can / could / would / will you …” is always typed: it's
+addressed to someone else.
 
 ## Storage
 

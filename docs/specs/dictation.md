@@ -65,6 +65,8 @@ leading space when the box already ends in a non-space character.
 - Line breaks use the app's new-line keys (Shift+Enter in chat apps so they don't send; Enter in editors).
 - Wait for the user to release modifier keys before inserting.
 - Refuse password fields and windows running with higher privileges (see [safety-and-privacy.md](safety-and-privacy.md)).
+- With **no text box** in focus (desktop, taskbar, a list, a button), save push-to-talk text on the idea board instead
+  of discarding it ([idea-board.md](idea-board.md#dictation-with-nowhere-to-type)).
 
 ## Hindi + English (Hinglish)
 

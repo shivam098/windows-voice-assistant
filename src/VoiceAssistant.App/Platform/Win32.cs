@@ -99,6 +99,16 @@ internal static partial class Win32
 
     public const int ASFW_ANY = -1;
 
+    [LibraryImport("user32.dll", EntryPoint = "GetClassNameW", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int GetClassNameNative(nint hWnd, [Out] char[] className, int maxCount);
+
+    public static string GetClassName(nint hWnd)
+    {
+        var buffer = new char[256];
+        var length = GetClassNameNative(hWnd, buffer, buffer.Length);
+        return length > 0 ? new string(buffer, 0, length) : string.Empty;
+    }
+
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool AllowSetForegroundWindow(int processId);

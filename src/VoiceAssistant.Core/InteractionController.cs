@@ -317,7 +317,7 @@ public sealed partial class InteractionController
             return;
         }
 
-        InsertIntoFocused(formatted, TranscriptText.Clean(transcript));
+        InsertIntoFocused(formatted, TranscriptText.Clean(transcript), fileIfNoTextBox: true);
     }
 
     /// <summary>Types the last dictated text again into the focused field.</summary>
@@ -615,7 +615,7 @@ public sealed partial class InteractionController
     private DateTimeOffset BoardNow() => _parser.BoardClock();
 
     /// <summary>Adds to the idea board, opens it, or ticks an item off; says what happened.</summary>
-    private bool ExecuteBoard(VoiceAssistant.Board.BoardIntent intent, string heard)
+    private bool ExecuteBoard(VoiceAssistant.Board.BoardIntent intent, string heard, bool noTextBox = false)
     {
         if (Board is null)
         {
@@ -628,10 +628,11 @@ public sealed partial class InteractionController
             case VoiceAssistant.Board.BoardAction.Add:
                 var list = intent.List ?? VoiceAssistant.Board.BoardList.Ideas;
                 var item = Board.Add(list, intent.Text, intent.Due);
-                Trace?.Invoke($"board add {list}{(item.Due is null ? string.Empty : " with time")}");
-                Report(StatusKind.Success, item.Due is { } due
+                Trace?.Invoke($"board add {list}{(item.Due is null ? string.Empty : " with time")}{(noTextBox ? " (no text box)" : string.Empty)}");
+                var lead = noTextBox ? "No text box, so I saved it. " : string.Empty;
+                Report(StatusKind.Success, lead + (item.Due is { } due
                     ? $"Reminder {(due > BoardNow() && due - BoardNow() < TimeSpan.FromHours(1) ? string.Empty : "for ")}{DescribeDue(due, BoardNow())}: “{Short(item.Text, 50)}”."
-                    : $"Added to {ListName(list)}: “{Short(item.Text, 50)}”.", heard);
+                    : $"Added to {ListName(list)}: “{Short(item.Text, 50)}”."), heard);
                 return true;
 
             case VoiceAssistant.Board.BoardAction.Show:
@@ -927,16 +928,31 @@ public sealed partial class InteractionController
         return true;
     }
 
-    private void InsertIntoFocused(string formatted, string? heard)
+    private void InsertIntoFocused(string formatted, string? heard, bool fileIfNoTextBox = false)
     {
         var window = _desktop.GetForegroundWindow();
+        var check = window is null ? (FieldCheck?)null : _desktop.CheckFocusedField();
+        if (fileIfNoTextBox && Board is not null && (window is null || check == FieldCheck.NotText))
+        {
+            // Nowhere to type: keep the thought on the idea board rather than lose it.
+            if (VoiceAssistant.Board.BoardGrammar.ForDictation(formatted, BoardNow()) is not { } note)
+            {
+                Report(StatusKind.Info, "I didn't catch anything to save.", heard);
+                return;
+            }
+
+            ExecuteBoard(note, heard ?? formatted, noTextBox: true);
+            LastTranscript = formatted;
+            return;
+        }
+
         if (window is null)
         {
             Report(StatusKind.Warning, "There's no window to type into.", heard);
             return;
         }
 
-        if (!CheckField(heard ?? string.Empty, formatted, allowUnknown: true))
+        if (!CheckField(heard ?? string.Empty, formatted, allowUnknown: true, known: check))
         {
             return;
         }
@@ -975,9 +991,9 @@ public sealed partial class InteractionController
     }
 
     /// <summary>Refuses password fields and administrator windows (and, unless allowed, fields that can't be checked).</summary>
-    private bool CheckField(string heard, string? pendingText, bool allowUnknown)
+    private bool CheckField(string heard, string? pendingText, bool allowUnknown, FieldCheck? known = null)
     {
-        var check = _desktop.CheckFocusedField();
+        var check = known ?? _desktop.CheckFocusedField();
         var refusal = check switch
         {
             FieldCheck.Password => "That's a password field — I won't type there.",

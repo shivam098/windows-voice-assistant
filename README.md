@@ -159,6 +159,7 @@ Say it and it's filed as a sticky note in the app window (**Idea board** page), 
 | “Hey Jarvis, mark renew passport as done” / “…tick off renew passport” | Ticks it off |
 
 - Requests that **name a list** (“add … to my to-do list”) work with push-to-talk; looser ones (“remind me…”, “note down…”) need “Hey Jarvis”, so dictating “please remind me to send the slides” to a colleague still types it.
+- **Nowhere to type?** If you hold `Ctrl`+`Win` with no text box in focus (desktop, taskbar, a file or chat list, a button), what you say is saved on the board instead of lost: a task with a future time (“call the bank tomorrow at 11”) becomes a reminder, a task (“I have to …”, “buy milk”) a to-do, anything else an idea.
 - Reminder times: “in 10 minutes”, “at 5:30 pm”, “tonight”, “tomorrow morning”, “on Friday at 10 am”, “next Monday”. When one is due, a card appears in the bottom-right corner (without taking keyboard focus) with **Done**, **Snooze 10 min** and **Open board**. Reminders that came due while the app was closed appear when it starts.
 - In the window: type a note in a column's box and press Enter; tick the checkbox when done; double-click to edit; right-click to move, snooze or delete.
 - Notes are saved in `%APPDATA%\VoiceAssistant\board.json`, on this PC only.

@@ -1,0 +1,11 @@
+# Push-to-talk with a list focused (no text box): the dictation goes to the idea board, nothing is typed.
+stoponfail
+expecttitle: No Text Lab
+expectfocus: report.docx
+ptt: I have to draft a reply to Tata Neu about the refund.
+expectboard: Todo Draft a reply to Tata Neu about the refund
+ptt: A voice game where kids guess animal sounds.
+expectboard: Ideas A voice game where kids guess animal sounds
+ptt: Call the bank tomorrow at 11 am.
+expectboard: Reminders Call the bank
+expecttitle: No Text Lab
