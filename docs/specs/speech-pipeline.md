@@ -25,7 +25,7 @@ Energy-based, robust to fans and background music:
 | Background level | Median of non-speech frames over the last 5 s (first 10 frames warm up) |
 | Speech starts | 3 consecutive frames ≥ background + 10 dB, and ≥ −55 dBFS |
 | Speech continues | Frames ≥ background + 6 dB |
-| Utterance ends | ≥ 80 % of the trailing 600 ms (`endSilenceMs`) is quiet |
+| Utterance ends | ≥ 80 % of the trailing 600 ms (`endSilenceMs`) is quiet; while voice typing, also over the trailing 1,100 ms (`dictationEndSilenceMs`) |
 | Pre-roll kept | 300 ms before the start |
 | Minimum speech | 200 ms |
 | Maximum utterance | 14 s, then a forced cut; the next piece is marked as a continuation (typed, never a command) |
@@ -35,7 +35,7 @@ Energy-based, robust to fans and background music:
 
 - Model: Silero VAD v6.2.0 (`ggml-silero-v6.2.0.bin`, SHA-256 `2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987`).
 - Threshold 0.5; minimum speech 150 ms; minimum silence 250 ms; no padding.
-- Voice utterances: drop if no speech; **split** at speech gaps ≥ 600 ms (each piece padded 250 ms) so a command glued to
+- Voice utterances: drop if no speech; **split** at speech gaps ≥ 600 ms (≥ 1,100 ms while voice typing) (each piece padded 250 ms) so a command glued to
   earlier speech by background noise is handled on its own.
 - Push-to-talk: chunk the recording into ≤ 14 s pieces at speech gaps (padded 200 ms); no speech → “I didn't hear any speech.”
 

@@ -77,6 +77,8 @@ public sealed class UtteranceSegmenter
     private int _quietFrames;
     private int _loudRun;
     private int _speechFrames;
+    private int _longPauseMs;
+    private readonly List<bool> _quietFlags = [];
 
     public UtteranceSegmenter(SegmenterOptions? options = null)
     {
@@ -94,6 +96,17 @@ public sealed class UtteranceSegmenter
 
     public bool InSpeech => _inSpeech;
 
+    /// <summary>
+    /// While typing, a longer pause ends a phrase: the same quiet fraction must hold over this many ms (when longer
+    /// than <see cref="SegmenterOptions.EndSilenceMs"/>), so thinking pauses mid-sentence don't split it into
+    /// separately punctuated pieces. 0 = use EndSilenceMs. Safe to set from another thread.
+    /// </summary>
+    public int LongPauseMs
+    {
+        get => Volatile.Read(ref _longPauseMs);
+        set => Volatile.Write(ref _longPauseMs, Math.Max(0, value));
+    }
+
     /// <summary>Current background (noise) level estimate in dBFS.</summary>
     public double NoiseFloorDb => _backgroundDb;
 
@@ -103,6 +116,7 @@ public sealed class UtteranceSegmenter
         _preRoll.Clear();
         _utterance.Clear();
         _utteranceLevels.Clear();
+        _quietFlags.Clear();
         _frameFill = 0;
         _inSpeech = false;
         _afterForcedCut = false;
@@ -203,9 +217,10 @@ public sealed class UtteranceSegmenter
         }
 
         PushEndWindow(quiet);
+        _quietFlags.Add(quiet);
         var windowFull = _utteranceLevels.Count >= _endWindow.Length;
         var durationMs = _utterance.Count * 1000 / _o.SampleRate;
-        if (windowFull && _endWindowQuiet >= Math.Ceiling(_endWindow.Length * _o.EndQuietFraction))
+        if (windowFull && _endWindowQuiet >= Math.Ceiling(_endWindow.Length * _o.EndQuietFraction) && LongPauseHeld())
         {
             Emit(forcedCut: false);
         }
@@ -253,6 +268,7 @@ public sealed class UtteranceSegmenter
         _quietFrames = _endWindowQuiet;
         _utterance.Clear();
         _utteranceLevels.Clear();
+        _quietFlags.Clear();
         _inSpeech = false;
         _loudRun = 0;
         _speechFrames = 0;
@@ -261,6 +277,32 @@ public sealed class UtteranceSegmenter
         {
             UtteranceReady?.Invoke(utterance);
         }
+    }
+
+    /// <summary>With <see cref="LongPauseMs"/> set, the same quiet fraction must hold over that longer stretch.</summary>
+    private bool LongPauseHeld()
+    {
+        var frames = LongPauseMs / _o.FrameMs;
+        if (frames <= _endWindow.Length)
+        {
+            return true;
+        }
+
+        if (_quietFlags.Count < frames)
+        {
+            return false;
+        }
+
+        var quiet = 0;
+        for (var i = _quietFlags.Count - frames; i < _quietFlags.Count; i++)
+        {
+            if (_quietFlags[i])
+            {
+                quiet++;
+            }
+        }
+
+        return quiet >= Math.Ceiling(frames * _o.EndQuietFraction);
     }
 
     private void AddBackground(double db)

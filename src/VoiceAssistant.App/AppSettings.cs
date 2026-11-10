@@ -101,6 +101,18 @@ internal sealed class AppSettings
     public int EndSilenceMs { get; set; } = 600;
 
     /// <summary>
+    /// While voice typing, the pause that ends a phrase. Longer than <see cref="EndSilenceMs"/> so a thinking pause
+    /// doesn't split a sentence into separately punctuated pieces (commands while typing wait this long too).
+    /// </summary>
+    public int DictationEndSilenceMs { get; set; } = 1100;
+
+    /// <summary>
+    /// Words and names you use often (product names, jargon), given to the accurate Hindi + English model as a hint so
+    /// it spells them right (“vibe coding”, not “wife coding”). Keep it short; the fast model ignores it (it confuses it).
+    /// </summary>
+    public List<string> DictationVocabulary { get; set; } = ["GitHub Copilot", "vibe coding", "iterate", "pull request", "commit"];
+
+    /// <summary>
     /// While waiting for a command, longer phrases (including the ~0.9 s of padding) are not transcribed.
     /// Saves CPU during meetings and conversations; the longest command is about 4 s.
     /// </summary>

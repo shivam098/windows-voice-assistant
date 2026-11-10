@@ -57,6 +57,23 @@ public class UtteranceSegmenterTests
     }
 
     [Fact]
+    public void While_typing_a_thinking_pause_does_not_split_the_sentence()
+    {
+        var typing = new UtteranceSegmenter { LongPauseMs = 1100 };
+        Assert.Single(Run(typing, Silence(1000), Tone(1500), Silence(800), Tone(1000), Silence(1500)));
+
+        // The same audio in command mode is two phrases.
+        Assert.Equal(2, Run(new UtteranceSegmenter(), Silence(1000), Tone(1500), Silence(800), Tone(1000), Silence(1500)).Count);
+    }
+
+    [Fact]
+    public void While_typing_a_long_pause_still_ends_the_phrase()
+    {
+        var typing = new UtteranceSegmenter { LongPauseMs = 1100 };
+        Assert.Equal(2, Run(typing, Silence(1000), Tone(1500), Silence(1500), Tone(1000), Silence(1500)).Count);
+    }
+
+    [Fact]
     public void Clicks_shorter_than_minimum_speech_are_dropped()
     {
         Assert.Empty(Run(new UtteranceSegmenter(), Silence(1000), Tone(120), Silence(900)));
