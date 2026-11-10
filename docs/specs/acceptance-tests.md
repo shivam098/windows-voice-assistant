@@ -25,8 +25,9 @@ navigation scenarios run with `tests/NavigationLab/run.ps1`.
 | D4 | Hold push-to-talk, press Esc | Cancelled; nothing inserted |
 | D5 | Clipboard holds X; dictate with push-to-talk | Text inserted; clipboard is X again; item not in clipboard history |
 | D6 | Switch on Hindi + English; dictate “kal ki meeting reschedule kar do” | Roman-script Hinglish inserted; pill shows HI + EN |
-| D7 | Tray › Dictation language › Hindi + English — accurate; dictate the same phrase | Live preview still updates; text typed by the accurate model (log `model=hinglish-accurate`); pill shows HI + EN · accurate; Alt+Shift+H toggles English ↔ accurate |
 | D7 | Password field focused; dictate | Refused with a message; nothing typed |
+| D8 | Tray › Dictation language › Hindi + English — accurate; dictate the same phrase | Live preview still updates; text typed by the accurate model (log `model=hinglish-accurate`); pill shows HI + EN · accurate; Alt+Shift+H toggles English ↔ accurate |
+| D9 | While typing: “delete the last two words”, “replace the word Monday with Tuesday”, “delete the word noon”, “delete the last sentence” | Exactly that text changes; typing continues at the end (`tests/EditingLab`) |
 
 ## Voice typing
 

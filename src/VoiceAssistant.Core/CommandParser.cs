@@ -61,12 +61,21 @@ public enum CommandKind
 
     /// <summary>“no” / “cancel”: drop pending choices and confirmations.</summary>
     Cancel,
+
+    /// <summary>“delete the last 3 words”, “delete the word very” (<see cref="VoiceCommand.Edit"/>).</summary>
+    DeleteText,
+
+    /// <summary>“replace Monday with Tuesday” (<see cref="VoiceCommand.Edit"/>).</summary>
+    ReplaceText,
 }
 
 public sealed record VoiceCommand(CommandKind Kind, string? Argument = null)
 {
     /// <summary>For <see cref="CommandKind.SelectTab"/>, <see cref="CommandKind.Click"/> and <see cref="CommandKind.FocusField"/>.</summary>
     public ElementTarget? Target { get; init; }
+
+    /// <summary>For <see cref="CommandKind.DeleteText"/> and <see cref="CommandKind.ReplaceText"/>.</summary>
+    public TextEdit? Edit { get; init; }
 }
 
 public sealed record ParsedUtterance
@@ -276,6 +285,12 @@ public sealed partial class CommandParser
                 // Unprefixed speech while typing stays strict: "please send it to Sam" is text, not a command.
                 var text = prefixed ? Simplify(normalized) : normalized;
                 var command = MatchDictationCommand(text, lenient: prefixed);
+                if (command is null && prefixed && WithUntrimmedEdit(null, normalized) is [{ } untrimmed])
+                {
+                    // "delete the word now": the trimmed text lost the phrase.
+                    command = untrimmed;
+                }
+
                 var learned = false;
                 if (command is null && prefixed && _memory?.TryGet(text, out var taught) == true)
                 {
@@ -286,14 +301,14 @@ public sealed partial class CommandParser
 
                 if (command is not null)
                 {
-                    return new ParsedUtterance { Commands = [command], WokeUp = woke, CommandText = text, FromLearnedPhrase = learned };
+                    return new ParsedUtterance { Commands = WithSpokenReplacement(prefixed ? WithUntrimmedEdit([command], normalized)! : [command], cleaned), WokeUp = woke, CommandText = text, FromLearnedPhrase = learned };
                 }
 
                 if (prefixed && MatchCommandMode(text) is { } full)
                 {
                     // "Hey Jarvis, go to the first tab" while typing: any command works after the wake word, and
                     // typing stops first so nothing lands in the new place.
-                    return new ParsedUtterance { Commands = full, WokeUp = woke, CommandText = text, LeavesTyping = true };
+                    return new ParsedUtterance { Commands = WithSpokenReplacement(WithUntrimmedEdit(full, normalized)!, cleaned), WokeUp = woke, CommandText = text, LeavesTyping = true };
                 }
 
                 return prefixed
@@ -309,7 +324,7 @@ public sealed partial class CommandParser
                     return new ParsedUtterance { WokeUp = woke };
                 }
 
-                var commands = MatchCommandMode(text);
+                var commands = MatchCommandMode(text) ?? WithUntrimmedEdit(null, normalized);
                 var learned = false;
                 if (commands is null && _memory?.TryGet(text, out var taught) == true)
                 {
@@ -321,7 +336,7 @@ public sealed partial class CommandParser
 
                 return commands is null
                     ? new ParsedUtterance { Unrecognized = text, WokeUp = woke }
-                    : new ParsedUtterance { Commands = commands, WokeUp = woke, CommandText = text, FromLearnedPhrase = learned };
+                    : new ParsedUtterance { Commands = WithSpokenReplacement(learned ? commands : WithUntrimmedEdit(commands, normalized)!, cleaned), WokeUp = woke, CommandText = text, FromLearnedPhrase = learned };
             }
         }
     }
@@ -374,6 +389,7 @@ public sealed partial class CommandParser
         if ((lenient ? NewParagraphPhrases : StrictNewParagraph).Contains(n)) return new VoiceCommand(CommandKind.NewParagraph);
         if ((lenient ? StopTypingPhrases : StrictStopTyping).Contains(n)) return new VoiceCommand(CommandKind.StopTyping);
         if ((lenient ? PausePhrases : StrictPause).Contains(n)) return new VoiceCommand(CommandKind.PauseListening);
+        if (MatchEdit(n, lenient) is { } edit) return edit;
         return MatchPress(n);
     }
 
@@ -388,6 +404,7 @@ public sealed partial class CommandParser
         if (Shortcuts.TryGetValue(n, out var shortcut)) return [new VoiceCommand(CommandKind.PressKeys, shortcut)];
         if (MatchPress(n) is { } press) return [press];
         if (MatchNavigation(n) is { } navigation) return navigation;
+        if (MatchEdit(n, lenient: true) is { } edit) return [edit];
 
         foreach (var prefix in new[] { "search for ", "search the web for ", "search google for ", "google ", "look up ", "search " })
         {

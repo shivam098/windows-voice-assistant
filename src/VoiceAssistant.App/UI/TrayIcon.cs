@@ -157,6 +157,8 @@ internal sealed class TrayIcon : IDisposable
 
         WHILE TYPING (red) — pause briefly before each command
           “Send” / “Search”     “Scratch that”     “Clear box”
+          “Delete the last 3 words / sentence / line”
+          “Delete the word very” · “Replace the word Monday with Tuesday”
           “New line”            “Stop typing”      “Press tab”
 
         NAVIGATE — after “Hey Jarvis”

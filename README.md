@@ -99,6 +99,8 @@ Speak naturally — polite padding is understood: *“Hey Jarvis, can you open N
 |---|---|
 | “Send” / “Search” / “Submit” | Presses the app’s send key (Enter), then back to commands |
 | “Scratch that” | Deletes the last phrase |
+| “Delete the last three words” / “delete the last sentence” / “delete the last line” | Deletes exactly that much before the cursor |
+| “Delete the word very” / “replace the word Monday with Tuesday” | Finds the last match before the cursor and removes or replaces it (after “Hey Jarvis”: just “replace Monday with Tuesday”) |
 | “Clear box” | Clears the text box |
 | “New line” / “New paragraph” | Line break without sending |
 | “Press tab” (any key) | Presses it |
@@ -222,7 +224,7 @@ Regenerate the logo with `powershell -File assets\make-logo.ps1`. See the **[ste
 
 - English, plus Hindi + English dictation (Alt+Shift+H); voice commands are English only. A headset works best in noisy rooms.
 - Clicking by name needs apps that expose accessibility names (most apps and all major browsers do). Apps drawn entirely on a canvas (some games, remote desktops) can't be clicked yet; there's no OCR or mouse grid.
-- Inline “scratch that” is rule-based: it removes the phrase before it, not a single corrected word (“meet at 2, scratch that, 3” keeps only “3”). Wispr's AI rewrites, tones/styles, and command-mode editing need a language model and aren't included.
+- Inline “scratch that” is rule-based: it removes the phrase before it, not a single corrected word (“meet at 2, scratch that, 3” keeps only “3”). For precise fixes say “delete the last two words” or “replace the word 2 with 3”. Spoken edits follow fixed phrasings (see [voice-commands.md](docs/specs/voice-commands.md#editing-what-you-typed)); Wispr's AI rewrites and tones need a language model and aren't included.
 - Voice dictation inserts text after each pause (~1 s), not word by word. Push-to-talk inserts when you release the keys.
 - `Ctrl+Win` combinations used by Windows (e.g. `Ctrl+Win+D`) still work; the recording is discarded.
 - Plain “Copilot” opens the Start menu app named *Copilot* (Microsoft Copilot). Say “GitHub Copilot”.

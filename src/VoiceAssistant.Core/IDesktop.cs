@@ -15,6 +15,13 @@ public sealed record DesktopResult(bool Success, string Message, WindowRef? Wind
 
 public sealed record TextTargetResult(bool Success, string Message, bool? HasTrailingText = null, bool? FocusIsEditable = null);
 
+/// <summary>
+/// The focused field's text before the cursor. <see cref="CaretKnown"/> is false when only the whole text could be read
+/// (the cursor is then assumed to be at the end); <see cref="HasSelection"/> when text is selected (edits are refused,
+/// since typing would replace the selection); <see cref="Editable"/> false for read-only text (pages, terminal output).
+/// </summary>
+public sealed record CaretText(string Before, bool CaretKnown, bool HasSelection = false, bool Editable = true);
+
 public enum FieldCheck
 {
     /// <summary>Positively confirmed not to be a password field.</summary>
@@ -56,6 +63,21 @@ public interface IDesktop
     void PressKeys(string chord);
 
     void Backspace(int count);
+
+    /// <summary>
+    /// The focused text field's text before the cursor (at most the last few thousand characters), so spoken edits
+    /// can find words and sentences. Null if the field's text can't be read.
+    /// </summary>
+    CaretText? ReadTextBeforeCaret() => null;
+
+    /// <summary>Presses the chord <paramref name="count"/> times (arrow keys for edits).</summary>
+    void PressKeysRepeated(string chord, int count)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            PressKeys(chord);
+        }
+    }
 
     // Navigation (tabs, clicking by name, choosing a text box). Platforms that can't do one report it unsupported.
 

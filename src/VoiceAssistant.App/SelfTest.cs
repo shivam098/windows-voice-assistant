@@ -15,6 +15,7 @@ namespace VoiceAssistant.App;
 ///   fg                     record the foreground process name
 ///   read                   record the focused control's type, text length and hash (not its text)
 ///   expect: &lt;text&gt;         PASS/FAIL: does the focused control contain the script's phrase (\n = line break)
+///   expectvalue: &lt;text&gt;    PASS/FAIL: is the focused control's whole text exactly this (\n = line break)
 ///   expecttitle: &lt;text&gt;    PASS/FAIL: does the foreground window title contain the phrase (title not written)
 ///   expectfocus: &lt;name&gt;    PASS/FAIL: does the focused control's accessible name contain the phrase
 ///   insert Paste|Type      switch the insertion method
@@ -131,6 +132,14 @@ internal static class SelfTest
                     var actual = ReadFocusedText().Value;
                     var pass = actual.Contains(expected, StringComparison.Ordinal);
                     output.AppendLine($"   {(pass ? "PASS" : "FAIL")}: focused text {(pass ? "contains" : "does not contain")} the expected phrase (field len={actual.Length})");
+                }
+                else if (line.StartsWith("expectvalue:", StringComparison.Ordinal))
+                {
+                    // The whole field must equal the script's text (\n = line break); used on the test window only.
+                    var expected = line[12..].Trim().Replace("\\n", "\n", StringComparison.Ordinal);
+                    var actual = ReadFocusedText().Value.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').TrimEnd();
+                    var pass = actual == expected;
+                    output.AppendLine($"   {(pass ? "PASS" : "FAIL")}: focused text {(pass ? "equals" : "does not equal")} the expected text (field len={actual.Length}, expected len={expected.Length})");
                 }
 
                 await Task.Delay(400).ConfigureAwait(false);
