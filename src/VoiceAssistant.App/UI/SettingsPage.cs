@@ -36,7 +36,7 @@ internal sealed class SettingsPage : UserControl
         stack.Children.Add(Section("Dictation",
             Check("Hold Ctrl+Win to dictate into any app", settings.PushToTalk, (s, v) => s.PushToTalk = v),
             Check("Show my words in the status pill while I speak", settings.LivePreview, (s, v) => s.LivePreview = v),
-            Check("Remove “um” and “uh”", settings.RemoveFillerWords, (s, v) => s.RemoveFillerWords = v),
+            Check("Remove filler words (“um”, “basically”, “thik hai na”, “haan to like”…)", settings.RemoveFillerWords, (s, v) => s.RemoveFillerWords = v),
             Check("Say punctuation (“comma”, “new line”)", settings.SpokenPunctuation, (s, v) => s.SpokenPunctuation = v),
             Choice("How text is inserted", ["Paste", "Type"], settings.InsertMethod, (s, v) => s.InsertMethod = v,
                 "Paste works everywhere (your clipboard is restored); Type sends keystrokes."),
