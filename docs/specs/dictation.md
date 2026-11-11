@@ -38,7 +38,20 @@ Applied to every dictated phrase, in this order:
 
 1. **Snippets:** a phrase equal to a snippet trigger (or “insert *trigger*”) is replaced by the snippet text, and
    nothing else applies.
-2. **Filler words:** “um”, “uh”, “uhm”, “erm”, “er”, “ah”, “hmm”, “mm” (stand-alone) are removed (`removeFillerWords`).
+2. **Filler words** (`removeFillerWords`), English and Hinglish:
+   - sounds: “um”, “uh”, “uhm”, “erm”, “er”, “ah”, “hmm”, “mm” (stand-alone);
+   - “basically” anywhere; “you know” / “I mean” between commas or opening a clause with a comma;
+   - tags: “thik hai na” inside a sentence, as a sentence of its own, after a comma, or after a word that ends a
+     clause (“… mein thik hai na?” → “… mein.”); kept when it is the question itself (“Papa ki tabiyat thik hai na?”,
+     “Kya sab thik hai na?”) or all that was said; also “…, thik hai?”;
+   - a run of **two or more** openers starting a sentence or clause: haan, so, ok/okay, achha, thik hai, matlab, chalo,
+     alright, like, with “to/toh” allowed inside the run but not last (“Haan to like …”, “Okay so …”, but not
+     “Ok to proceed”, “So okay to merge”, “So like I said”); “like” before “for example” / “jaise”;
+   - the same 2–4 words said twice in a row (“for example, for example”); single doubled words (“dheere dheere”),
+     spoken punctuation (“new line new line”) and digits (“1 2 1 2”) stay;
+   - sentences that are only fillers (“Ok.”, “Thik hai.”, “Achha.”) when the dictation has other sentences
+     (“Haan.” and “So.” stay: they can be answers).
+   A single “to”, “so”, “haan”, “like” or “right” is kept, since it may carry meaning.
 3. **Scratch that:** “…call John, scratch that, email Sarah” drops the clause before “scratch that”, back to the
    previous punctuation mark.
 4. **Spoken punctuation** (`spokenPunctuation`): “comma” `,` · “full stop” `.` · “period” `.` (only at the end) ·

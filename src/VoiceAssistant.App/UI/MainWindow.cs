@@ -64,9 +64,9 @@ internal sealed class MainWindow : Window
                 Margin = new Thickness(0, 0, 0, 4),
                 FontSize = 14,
                 BorderThickness = new Thickness(0),
-                Background = System.Windows.Media.Brushes.Transparent,
                 Cursor = System.Windows.Input.Cursors.Hand,
             };
+            Theme.Animate(button, NavRest, Theme.Color("#E0E0E0"), Theme.Color("#D6D6D6"));
             button.Click += (_, _) => ShowPage(page);
             nav.Children.Add(button);
             _pages[page] = (button, element);
@@ -82,7 +82,16 @@ internal sealed class MainWindow : Window
         layout.Children.Add(sidebar);
         layout.Children.Add(_content);
         Content = layout;
+        UseLayoutRounding = true;
 
+        // Fade the window's contents in each time it opens (from the tray, a second launch, or a voice command).
+        IsVisibleChanged += (_, e) =>
+        {
+            if (e.NewValue is true)
+            {
+                Motion.FadeIn(layout, 200);
+            }
+        };
         Closing += (_, e) => OnClosing(e, balloon);
         ShowPage(AppPage.Home);
     }
@@ -94,12 +103,20 @@ internal sealed class MainWindow : Window
     {
         foreach (var (key, (button, _)) in _pages)
         {
-            button.Background = key == page ? Theme.AccentSoft : System.Windows.Media.Brushes.Transparent;
+            Theme.SetRestColor(button, key == page ? NavSelected : NavRest);
             button.FontWeight = key == page ? FontWeights.SemiBold : FontWeights.Normal;
         }
 
-        _content.Content = _pages[page].Page;
+        var element = _pages[page].Page;
+        if (!ReferenceEquals(_content.Content, element))
+        {
+            _content.Content = element;
+            Motion.FadeIn(element, 180, rise: 10);
+        }
     }
+
+    private static readonly System.Windows.Media.Color NavRest = System.Windows.Media.Color.FromArgb(0, 0xEB, 0xEB, 0xEB);
+    private static readonly System.Windows.Media.Color NavSelected = Theme.Color("#ECEAFD");
 
     /// <summary>Opens the window on the idea board, highlighting a list.</summary>
     public void ShowBoard(BoardList? list)

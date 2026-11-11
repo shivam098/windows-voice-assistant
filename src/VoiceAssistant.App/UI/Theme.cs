@@ -73,6 +73,7 @@ internal static class Theme
 
     public static System.Windows.Controls.Button Button(string text, RoutedEventHandler onClick, bool primary = false)
     {
+        var normal = primary ? Color("#5B4BDB") : Color("#FFFFFF");
         var button = new System.Windows.Controls.Button
         {
             Content = text,
@@ -80,11 +81,53 @@ internal static class Theme
             Margin = new Thickness(0, 0, 8, 0),
             FontSize = 13,
             Cursor = System.Windows.Input.Cursors.Hand,
-            Background = primary ? Accent : Card,
             Foreground = primary ? Brushes.White : Text,
             BorderBrush = primary ? Accent : Border,
         };
+        Animate(button, normal, primary ? Color("#4C3DC7") : Color("#F3F3F3"), primary ? Color("#3F31B0") : Color("#E6E6E6"));
         button.Click += onClick;
         return button;
     }
+
+    /// <summary>
+    /// A flat, rounded look (no default Windows chrome) whose background eases between its normal, hover and pressed
+    /// colours. <paramref name="normal"/> can be changed later through <see cref="SetRestColor"/> (selected nav item).
+    /// </summary>
+    public static void Animate(System.Windows.Controls.Button button, WpfColor normal, WpfColor hover, WpfColor pressed)
+    {
+        var brush = Motion.Live(normal);
+        button.Background = brush;
+        button.Template = FlatButton;
+        button.Tag = normal;
+        WpfColor Rest() => button.Tag is WpfColor c ? c : normal;
+        button.MouseEnter += (_, _) => Motion.ToColor(brush, hover);
+        button.MouseLeave += (_, _) => Motion.ToColor(brush, Rest());
+        button.PreviewMouseLeftButtonDown += (_, _) => Motion.ToColor(brush, pressed, 60);
+        button.PreviewMouseLeftButtonUp += (_, _) => Motion.ToColor(brush, button.IsMouseOver ? hover : Rest(), 120);
+    }
+
+    /// <summary>Changes the colour a button rests at (and eases to it unless the mouse is over it).</summary>
+    public static void SetRestColor(System.Windows.Controls.Button button, WpfColor color)
+    {
+        button.Tag = color;
+        if (!button.IsMouseOver && button.Background is SolidColorBrush brush && !brush.IsFrozen)
+        {
+            Motion.ToColor(brush, color);
+        }
+    }
+
+    public static WpfColor Color(string hex) => (WpfColor)System.Windows.Media.ColorConverter.ConvertFromString(hex);
+
+    private static readonly ControlTemplate FlatButton = (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
+        """
+        <ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" TargetType="Button">
+          <Border x:Name="Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center" RecognizesAccessKey="True" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Chrome" Property="Opacity" Value="0.5" /></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+        """);
 }

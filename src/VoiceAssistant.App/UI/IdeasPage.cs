@@ -20,6 +20,9 @@ internal sealed class IdeasPage : UserControl
     private readonly Dictionary<string, (Border Card, DockPanel Row, StackPanel Body)> _cards = [];
     private int _editing; // open editors
 
+    // Where each note was last drawn, so only new or moved notes fade in (null before the first draw).
+    private Dictionary<string, (BoardList List, bool Done)>? _drawn;
+
     public IdeasPage(BoardStore board)
     {
         _board = board;
@@ -55,19 +58,18 @@ internal sealed class IdeasPage : UserControl
         Refresh();
     }
 
-    /// <summary>Scrolls to and briefly highlights a list (“show my reminders”).</summary>
+    /// <summary>Scrolls to and briefly highlights a list (“show my reminders”): its outline glows, then fades back.</summary>
     public void Highlight(BoardList list)
     {
         var column = _columns[list].Column;
-        column.BorderBrush = Theme.Accent;
-        column.BorderThickness = new Thickness(2);
         column.BringIntoView();
-        var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2.5) };
+        var glow = Motion.Live(Theme.Color("#5B4BDB"));
+        column.BorderBrush = glow;
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1.8) };
         timer.Tick += (_, _) =>
         {
             timer.Stop();
-            column.BorderBrush = Theme.Border;
-            column.BorderThickness = new Thickness(1);
+            Motion.ToColor(glow, Theme.Color("#E0E0E0"), 900);
         };
         timer.Start();
     }
@@ -127,7 +129,9 @@ internal sealed class IdeasPage : UserControl
         panel.Children.Add(addBox);
 
         var notes = new StackPanel();
-        panel.Children.Add(new ScrollViewer { Content = notes, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        var scroll = new ScrollViewer { Content = notes, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        Motion.SmoothScroll(scroll);
+        panel.Children.Add(scroll);
 
         var column = new Border
         {
@@ -164,7 +168,12 @@ internal sealed class IdeasPage : UserControl
             notes.Children.Clear();
             foreach (var item in open.Concat(done))
             {
-                notes.Children.Add(Note(item, now));
+                var card = Note(item, now);
+                notes.Children.Add(card);
+                if (_drawn is not null && (!_drawn.TryGetValue(item.Id, out var was) || was != (item.List, item.Done)))
+                {
+                    Motion.FadeIn(card, 260, rise: 6);
+                }
             }
 
             if (notes.Children.Count == 0)
@@ -175,6 +184,8 @@ internal sealed class IdeasPage : UserControl
             var openCount = inList.Count(i => !i.Done);
             count.Text = openCount == 0 ? string.Empty : openCount.ToString(CultureInfo.CurrentCulture);
         }
+
+        _drawn = items.ToDictionary(i => i.Id, i => (i.List, i.Done));
     }
 
     private Border Note(BoardItem item, DateTimeOffset now)
