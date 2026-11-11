@@ -14,6 +14,7 @@ internal sealed class HomePage : UserControl
 
     private readonly AssistantHost _host;
     private readonly BoardStore _board;
+    private readonly SolidColorBrush _dotColor = Motion.Live(Theme.Color("#9AA0A6"));
     private readonly Ellipse _dot = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock _mode = new() { FontSize = 18, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock _modeHint = Theme.Label(string.Empty, 13, Theme.Muted);
@@ -95,7 +96,9 @@ internal sealed class HomePage : UserControl
         activity.Children.Add(_activity);
         stack.Children.Add(Theme.CardOf(activity));
 
-        Content = new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        var scroll = new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        Motion.SmoothScroll(scroll);
+        Content = scroll;
         Background = Theme.Background;
 
         ShowMode(_host.Mode);
@@ -128,6 +131,7 @@ internal sealed class HomePage : UserControl
         });
         line.Margin = new Thickness(0, 0, 0, 4);
         _activity.Children.Insert(0, line);
+        Motion.FadeIn(line, 220);
         while (_activity.Children.Count > MaxActivity)
         {
             _activity.Children.RemoveAt(_activity.Children.Count - 1);
@@ -136,13 +140,16 @@ internal sealed class HomePage : UserControl
 
     private void ShowMode(InteractionMode mode)
     {
-        (_mode.Text, _modeHint.Text, _dot.Fill) = mode switch
+        string colour;
+        (_mode.Text, _modeHint.Text, colour) = mode switch
         {
-            InteractionMode.Dictation => ("Typing", "Speaking types into the chosen text box. Say “stop typing” when done.", Theme.Hex("#EA4335")),
-            InteractionMode.Command => ("Listening for a command", "Say a command now, e.g. “open Notepad”.", Theme.Hex("#4C8DF6")),
-            InteractionMode.Standby => ("Listening for “Hey Jarvis”", "Hold Ctrl+Win any time to dictate.", Theme.Hex("#34A853")),
-            _ => ("Paused", "The microphone is off. Hold Ctrl+Win still dictates.", Theme.Hex("#9AA0A6")),
+            InteractionMode.Dictation => ("Typing", "Speaking types into the chosen text box. Say “stop typing” when done.", "#EA4335"),
+            InteractionMode.Command => ("Listening for a command", "Say a command now, e.g. “open Notepad”.", "#4C8DF6"),
+            InteractionMode.Standby => ("Listening for “Hey Jarvis”", "Hold Ctrl+Win any time to dictate.", "#34A853"),
+            _ => ("Paused", "The microphone is off. Hold Ctrl+Win still dictates.", "#9AA0A6"),
         };
+        _dot.Fill = _dotColor;
+        Motion.ToColor(_dotColor, Theme.Color(colour), 220);
         _toggle.Content = mode == InteractionMode.Paused ? "Start listening" : "Pause listening";
     }
 

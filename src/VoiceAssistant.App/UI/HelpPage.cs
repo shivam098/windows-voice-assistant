@@ -19,7 +19,9 @@ internal sealed class HelpPage : UserControl
         top.Children.Add(new Border { Height = 12 });
         DockPanel.SetDock(top, Dock.Top);
         root.Children.Add(top);
-        root.Children.Add(new ScrollViewer { Content = _sections, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        var scroll = new ScrollViewer { Content = _sections, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        Motion.SmoothScroll(scroll);
+        root.Children.Add(scroll);
         Content = root;
         Background = Theme.Background;
         Show(string.Empty);

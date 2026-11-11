@@ -18,6 +18,7 @@ public partial class OverlayWindow : Window
     private InteractionMode _mode = InteractionMode.Paused;
     private string? _activity;
     private bool _minimized;
+    private bool _hiding;
 
     /// <param name="commandModeIsIdle">True when there is no wake word, so "listening for a command" is the resting state.</param>
     public OverlayWindow(bool commandModeIsIdle = false)
@@ -42,10 +43,7 @@ public partial class OverlayWindow : Window
         MinimizeButton.Click += (_, _) =>
         {
             Minimized = true;
-            if (IsVisible)
-            {
-                Hide();
-            }
+            HideSmoothly();
         };
     }
 
@@ -158,15 +156,39 @@ public partial class OverlayWindow : Window
             || HeardText.Visibility == Visibility.Visible;
         if (!_minimized || busy)
         {
-            if (!IsVisible)
+            if (!IsVisible || _hiding)
             {
-                Show();
+                _hiding = false;
+                if (!IsVisible)
+                {
+                    Show();
+                }
+
+                Motion.FadeIn(this, 140);
             }
         }
-        else if (IsVisible)
+        else
         {
-            Hide();
+            HideSmoothly();
         }
+    }
+
+    private void HideSmoothly()
+    {
+        if (!IsVisible || _hiding)
+        {
+            return;
+        }
+
+        _hiding = true;
+        Motion.FadeOut(this, () =>
+        {
+            if (_hiding)
+            {
+                _hiding = false;
+                Hide();
+            }
+        }, 220);
     }
 
     private void Reposition()

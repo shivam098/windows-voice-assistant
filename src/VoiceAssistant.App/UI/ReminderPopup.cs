@@ -62,6 +62,8 @@ internal sealed class ReminderPopup : Window
             Win32.SetWindowLongPtr(hwnd, Win32.GWL_EXSTYLE, style | Win32.WS_EX_NOACTIVATE | Win32.WS_EX_TOOLWINDOW);
         };
 
+        Loaded += (_, _) => Motion.FadeIn(this, 260);
+
         // Off screen until the app stacks it with the other open cards (it needs the card's height first).
         WindowStartupLocation = WindowStartupLocation.Manual;
         Left = -10000;

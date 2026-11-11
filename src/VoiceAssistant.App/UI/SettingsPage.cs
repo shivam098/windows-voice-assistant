@@ -74,7 +74,9 @@ internal sealed class SettingsPage : UserControl
         stack.Children.Add(Theme.Label("Saving changes only the fields you edited here; other entries in the file (such as apps) are kept. Comments in the file are removed.", 12, Theme.Muted));
         stack.Children.Add(_saved);
 
-        Content = new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        var scroll = new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        Motion.SmoothScroll(scroll);
+        Content = scroll;
         Background = Theme.Background;
     }
 

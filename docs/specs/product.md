@@ -85,6 +85,10 @@ and **What you can say** (searchable command list). Closing the window must not 
 the tray / menu bar. Starting the app at sign-in opens no window; starting it again while it runs opens the running
 copy's window.
 
+Motion: pages, new notes, reminder cards and the status pill fade in (about 0.2 s), buttons ease between colours
+on hover, and the mouse wheel scrolls smoothly. All of it is off when the system's animation setting is off (Windows:
+Settings › Accessibility › Visual effects › Animation effects).
+
 ## Tray / menu bar
 
 Click: open the window. Menu: open, idea board, status, pause/resume, paste last dictation, dictation language, copy

@@ -55,7 +55,7 @@ Put the cursor in any text box, then:
 
 Dictation is cleaned up automatically:
 
-- **Filler words** (“um”, “uh”, “hmm”) are removed.
+- **Filler words** are removed: “um”, “uh”, “basically”, “you know”, Hinglish tags like “thik hai na?”, openers like “Haan to like …” / “Okay so …”, a phrase said twice (“for example, for example”), and stray “Ok.” sentences. Words that may carry meaning (“to”, “so”, “haan”, “like” on their own) are kept.
 - **Spoken punctuation**: “comma”, “question mark”, “exclamation mark”, “colon”, “new line”, “new paragraph”, and “period” at the end.
 - **Inline correction**: “…call John, scratch that, email Sarah” keeps only what follows “scratch that” (it drops the phrase just before it).
 - **Personal dictionary**: `replacements` fixes words and names you use (“git hub” → “GitHub”, “shivum” → “Shivam”).
