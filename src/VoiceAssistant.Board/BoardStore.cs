@@ -29,6 +29,9 @@ public sealed record BoardItem
 
     /// <summary>The reminder popup was shown (so it isn't shown again after a restart).</summary>
     public bool Notified { get; init; }
+
+    /// <summary>Position among the open notes of its list, lowest first (set by dragging; new notes go on top).</summary>
+    public double Order { get; init; }
 }
 
 /// <summary>Everything the board can do, for voice commands and the UI alike.</summary>
@@ -96,10 +99,52 @@ public sealed class BoardStore : IBoard
 
     public BoardItem Add(BoardList list, string text, DateTimeOffset? due = null)
     {
-        var item = new BoardItem { List = list, Text = Tidy(text), Created = _clock(), Due = due };
-        Mutate(items => items.Add(item));
-        return item;
+        BoardItem? added = null;
+        Mutate(items =>
+        {
+            // On top of the list, above anything placed by hand.
+            var top = items.Where(i => i.List == list && !i.Done).Select(i => i.Order).DefaultIfEmpty(0).Min();
+            added = new BoardItem { List = list, Text = Tidy(text), Created = _clock(), Due = due, Order = top - 1 };
+            items.Add(added);
+        });
+        return added!;
     }
+
+    /// <summary>
+    /// Puts a note in a list at a position among that list's open notes (0 = top), as when it is dragged there. A done
+    /// note just changes list (done notes are shown newest first).
+    /// </summary>
+    public void Place(string id, BoardList list, int index) => Mutate(items =>
+    {
+        var at = items.FindIndex(i => i.Id == id);
+        if (at < 0)
+        {
+            return;
+        }
+
+        var item = items[at] with { List = list };
+        items[at] = item;
+        if (item.Done)
+        {
+            return;
+        }
+
+        var open = Arrange(items.Where(i => i.List == list && !i.Done && i.Id != id), list).ToList();
+        open.Insert(Math.Clamp(index, 0, open.Count), item);
+        for (var k = 0; k < open.Count; k++)
+        {
+            var j = items.FindIndex(i => i.Id == open[k].Id);
+            items[j] = items[j] with { Order = k };
+        }
+    });
+
+    /// <summary>
+    /// The order a list's open notes are shown in: by position (newest first among equals); reminders by due time first.
+    /// </summary>
+    public static IEnumerable<BoardItem> Arrange(IEnumerable<BoardItem> open, BoardList list) =>
+        list == BoardList.Reminders
+            ? open.OrderBy(i => i.Due ?? DateTimeOffset.MaxValue).ThenBy(i => i.Order).ThenByDescending(i => i.Created)
+            : open.OrderBy(i => i.Order).ThenByDescending(i => i.Created);
 
     public void Update(BoardItem item) => Mutate(items =>
     {
@@ -117,7 +162,8 @@ public sealed class BoardStore : IBoard
     /// <summary>Changes only the text, so an edit can't undo a tick, move or snooze made while it was open.</summary>
     public void SetText(string id, string text) => Change(id, i => i with { Text = Tidy(text) });
 
-    public void Move(string id, BoardList list) => Change(id, i => i with { List = list });
+    /// <summary>Moves a note to the top of another list.</summary>
+    public void Move(string id, BoardList list) => Place(id, list, 0);
 
     public void MarkNotified(string id) => Change(id, i => i with { Notified = true });
 

@@ -10,7 +10,7 @@ namespace VoiceAssistant.App.UI;
 
 /// <summary>
 /// The idea board: one column of sticky notes per list. Notes come from voice (“add to my ideas …”) or the box at the
-/// top of each column; tick them off, double-click to edit, right-click to move or delete.
+/// top of each column; tick them off, drag them to reorder or to another list, double-click to edit, right-click for more.
 /// </summary>
 internal sealed class IdeasPage : UserControl
 {
@@ -22,6 +22,14 @@ internal sealed class IdeasPage : UserControl
 
     // Where each note was last drawn, so only new or moved notes fade in (null before the first draw).
     private Dictionary<string, (BoardList List, bool Done)>? _drawn;
+
+    private const string DragFormat = "VoiceAssistant.BoardItem";
+    private readonly Border _dropLine = new() { Height = 3, CornerRadius = new CornerRadius(2), Background = Theme.Accent, Margin = new Thickness(2, 0, 2, 8), IsHitTestVisible = false };
+    private System.Windows.Point? _pressAt;
+    private BoardItem? _pressed;
+    private Border? _pressedCard;
+    private DragGhost? _ghost;
+    private BoardList? _dropList;
 
     public IdeasPage(BoardStore board)
     {
@@ -53,6 +61,9 @@ internal sealed class IdeasPage : UserControl
 
         root.Children.Add(grid);
         Content = root;
+        AllowDrop = true;
+        DragOver += OnDragOver;
+        Drop += OnDrop;
         Background = Theme.Background;
         _board.Changed += () => Dispatcher.BeginInvoke(Refresh);
         Refresh();
@@ -161,9 +172,7 @@ internal sealed class IdeasPage : UserControl
         foreach (var (list, (_, notes, count)) in _columns)
         {
             var inList = items.Where(i => i.List == list).ToList();
-            var open = inList.Where(i => !i.Done)
-                .OrderBy(i => list == BoardList.Reminders ? i.Due ?? DateTimeOffset.MaxValue : DateTimeOffset.MinValue)
-                .ThenByDescending(i => i.Created);
+            var open = BoardStore.Arrange(inList.Where(i => !i.Done), list);
             var done = _showDone.IsChecked == true ? inList.Where(i => i.Done).OrderByDescending(i => i.Created) : Enumerable.Empty<BoardItem>();
             notes.Children.Clear();
             foreach (var item in open.Concat(done))
@@ -221,10 +230,36 @@ internal sealed class IdeasPage : UserControl
             Padding = new Thickness(10, 8, 10, 8),
             Margin = new Thickness(0, 0, 0, 8),
             Child = row,
-            ToolTip = $"Added {item.Created.LocalDateTime:g}. Double-click to edit, right-click for more.",
+            ToolTip = $"Added {item.Created.LocalDateTime:g}. Drag to move, double-click to edit, right-click for more.",
+            Tag = item,
+            Cursor = System.Windows.Input.Cursors.SizeAll,
         };
         card.ContextMenu = Menu(item);
         _cards[item.Id] = (card, row, body);
+        card.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            // Not from the tick box or an open editor: those keep their own clicks.
+            if (e.ClickCount == 1 && !IsInside<System.Windows.Controls.Primitives.ToggleButton>(e.OriginalSource) && !IsInside<System.Windows.Controls.TextBox>(e.OriginalSource))
+            {
+                _pressAt = e.GetPosition(this);
+                _pressed = item;
+                _pressedCard = card;
+            }
+        };
+        card.PreviewMouseLeftButtonUp += (_, _) => _pressAt = null;
+        card.PreviewMouseMove += (_, e) =>
+        {
+            if (_pressAt is not { } start || _pressedCard != card || e.LeftButton != MouseButtonState.Pressed || _editing > 0)
+            {
+                return;
+            }
+
+            var moved = e.GetPosition(this) - start;
+            if (Math.Abs(moved.X) >= SystemParameters.MinimumHorizontalDragDistance || Math.Abs(moved.Y) >= SystemParameters.MinimumVerticalDragDistance)
+            {
+                StartDrag(card, item, e.GetPosition(card));
+            }
+        };
         card.MouseLeftButtonDown += (_, e) =>
         {
             if (e.ClickCount == 2)
@@ -251,6 +286,19 @@ internal sealed class IdeasPage : UserControl
         }
 
         menu.Items.Add(move);
+        if (!item.Done && item.List != BoardList.Reminders)
+        {
+            // The keyboard way to reorder (dragging needs a mouse).
+            var siblings = BoardStore.Arrange(_board.Items.Where(i => i.List == item.List && !i.Done), item.List).ToList();
+            var at = siblings.FindIndex(i => i.Id == item.Id);
+            var up = new MenuItem { Header = "Move up", IsEnabled = at > 0 };
+            up.Click += (_, _) => _board.Place(item.Id, item.List, at - 1);
+            var down = new MenuItem { Header = "Move down", IsEnabled = at >= 0 && at < siblings.Count - 1 };
+            down.Click += (_, _) => _board.Place(item.Id, item.List, at + 1);
+            menu.Items.Add(up);
+            menu.Items.Add(down);
+        }
+
         if (item.List == BoardList.Reminders && item.Due is not null && !item.Done)
         {
             var snooze = new MenuItem { Header = "Snooze 10 minutes" };
@@ -312,6 +360,211 @@ internal sealed class IdeasPage : UserControl
         };
         editor.LostKeyboardFocus += (_, _) => Finish(true);
         card.BorderBrush = Theme.Accent;
+    }
+
+    private void StartDrag(Border card, BoardItem item, System.Windows.Point grab)
+    {
+        _pressAt = null;
+        var layer = System.Windows.Documents.AdornerLayer.GetAdornerLayer(this);
+        _ghost = layer is null ? null : new DragGhost(this, card, grab);
+        if (_ghost is not null)
+        {
+            layer!.Add(_ghost);
+        }
+
+        card.Opacity = 0.35;
+        try
+        {
+            DragDrop.DoDragDrop(card, new System.Windows.DataObject(DragFormat, item.Id), System.Windows.DragDropEffects.Move);
+        }
+        finally
+        {
+            card.Opacity = 1;
+            if (_ghost is not null)
+            {
+                layer?.Remove(_ghost);
+                _ghost = null;
+            }
+
+            HideDropTarget();
+        }
+    }
+
+    private void OnDragOver(object sender, System.Windows.DragEventArgs e)
+    {
+        e.Handled = true;
+        if (!e.Data.GetDataPresent(DragFormat))
+        {
+            e.Effects = System.Windows.DragDropEffects.None;
+            return;
+        }
+
+        _ghost?.MoveTo(e.GetPosition(this));
+        if (DropTarget(e) is not { } target)
+        {
+            e.Effects = System.Windows.DragDropEffects.None;
+            HideDropTarget();
+            return;
+        }
+
+        e.Effects = System.Windows.DragDropEffects.Move;
+        ShowDropTarget(target.List, target.Child);
+    }
+
+    private void OnDrop(object sender, System.Windows.DragEventArgs e)
+    {
+        e.Handled = true;
+        var target = DropTarget(e);
+        HideDropTarget();
+        if (target is { } t && e.Data.GetData(DragFormat) is string id)
+        {
+            _board.Place(id, t.List, t.Index);
+        }
+    }
+
+    /// <summary>
+    /// Which list the pointer is over, the position among its open notes (0 = top), and where the drop line goes among
+    /// the column's children. Reminders are kept in time order, so only the list matters there.
+    /// </summary>
+    private (BoardList List, int Index, int Child)? DropTarget(System.Windows.DragEventArgs e)
+    {
+        foreach (var (list, (column, notes, _)) in _columns)
+        {
+            var p = e.GetPosition(column);
+            if (p.X < 0 || p.Y < 0 || p.X > column.ActualWidth || p.Y > column.ActualHeight)
+            {
+                continue;
+            }
+
+            var dragged = e.Data.GetData(DragFormat) as string;
+            var y = e.GetPosition(notes).Y;
+            var index = 0;
+            var child = 0;
+            for (var c = 0; c < notes.Children.Count; c++)
+            {
+                if (notes.Children[c] is not Border { Tag: BoardItem item } card || item.Done)
+                {
+                    if (notes.Children[c] is Border { Tag: BoardItem { Done: true } })
+                    {
+                        break; // done notes sit below the open ones
+                    }
+
+                    continue;
+                }
+
+                if (item.Id == dragged)
+                {
+                    child = c + 1;
+                    continue;
+                }
+
+                var mid = card.TranslatePoint(new System.Windows.Point(0, card.ActualHeight / 2), notes).Y;
+                if (y < mid)
+                {
+                    child = c;
+                    break;
+                }
+
+                index++;
+                child = c + 1;
+            }
+
+            return (list, list == BoardList.Reminders ? 0 : index, child);
+        }
+
+        return null;
+    }
+
+    private void ShowDropTarget(BoardList list, int child)
+    {
+        if (_dropList != list)
+        {
+            HideDropTarget();
+            _dropList = list;
+            _columns[list].Column.BorderBrush = Theme.Accent;
+        }
+
+        if (list == BoardList.Reminders)
+        {
+            return;
+        }
+
+        var notes = _columns[list].Notes;
+        var current = notes.Children.IndexOf(_dropLine);
+        if (current >= 0 && current < child)
+        {
+            child--; // the line itself is above the target
+        }
+
+        if (current != child)
+        {
+            if (current >= 0)
+            {
+                notes.Children.RemoveAt(current);
+            }
+
+            notes.Children.Insert(Math.Min(child, notes.Children.Count), _dropLine);
+        }
+    }
+
+    private void HideDropTarget()
+    {
+        if (_dropList is { } list)
+        {
+            _columns[list].Column.BorderBrush = Theme.Border;
+        }
+
+        _dropList = null;
+        (_dropLine.Parent as System.Windows.Controls.Panel)?.Children.Remove(_dropLine);
+    }
+
+    private static bool IsInside<T>(object source)
+        where T : DependencyObject
+    {
+        for (var node = source as DependencyObject; node is not null; node = node is Visual ? VisualTreeHelper.GetParent(node) : LogicalTreeHelper.GetParent(node))
+        {
+            if (node is T)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>A see-through copy of the card that follows the pointer while it is dragged.</summary>
+    private sealed class DragGhost : System.Windows.Documents.Adorner
+    {
+        private readonly VisualBrush _look;
+        private readonly System.Windows.Size _size;
+        private readonly System.Windows.Point _grab;
+        private System.Windows.Point _at;
+
+        public DragGhost(UIElement page, Border card, System.Windows.Point grab)
+            : base(page)
+        {
+            _look = new VisualBrush(card) { Stretch = Stretch.None, AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top };
+            _size = new System.Windows.Size(card.ActualWidth, card.ActualHeight);
+            _grab = grab;
+            _at = card.TranslatePoint(grab, page);
+            IsHitTestVisible = false;
+            Opacity = 0.9;
+        }
+
+        public void MoveTo(System.Windows.Point at)
+        {
+            _at = at;
+            InvalidateVisual();
+        }
+
+        protected override void OnRender(DrawingContext dc)
+        {
+            var box = new Rect(new System.Windows.Point(_at.X - _grab.X, _at.Y - _grab.Y), _size);
+            dc.PushTransform(new RotateTransform(-1.5, box.X + _grab.X, box.Y + _grab.Y));
+            dc.DrawRoundedRectangle(new SolidColorBrush(System.Windows.Media.Color.FromArgb(40, 0, 0, 0)), null, new Rect(box.X + 2, box.Y + 4, box.Width, box.Height), 6, 6);
+            dc.DrawRectangle(_look, null, box);
+            dc.Pop();
+        }
     }
 
     private static string DueText(DateTimeOffset due, DateTimeOffset now) =>
