@@ -55,6 +55,7 @@ Energy-based, robust to fans and background music:
 | Hallucination filter | Drop “you”, “thanks for watching”, “thank you for watching”, “please subscribe” for audio < 2.5 s | Known Whisper outputs on near-silence |
 | Command confidence | Average token probability < 0.3 → command ignored | |
 | Command length cap | In Standby/Command, utterances > 6 s are skipped | Meetings and conversation |
+| Standby wake-word check | In Standby, first a quick pass on the first 3 s of each phrase: same model, 2 threads, audio context 256, at most 8 tokens, no temperature fallback. The full pass runs only if it may contain the wake word (a word, or two adjacent words joined, within 2 edits of the last word of a wake phrase — 1 edit for 3–4 letter names; a wake phrase whose last word is shorter than 3 letters disables the quick pass) or is a command said without it (for the “say Hey Jarvis first” hint; for phrases longer than 3 s, also any quick transcript starting with a command word) | Always-on listening hears all nearby speech; transcribing it all in full kept a core 15–30 % busy. The quick pass uses ~10× less CPU ([BENCHMARKS.md](../BENCHMARKS.md#standby-cost)) |
 | Queue | Serial; at most 6 utterances waiting | Order is preserved; overload drops, never reorders |
 
 Models are downloaded on first use from their published locations and must match the pinned SHA-256 before loading;
@@ -70,6 +71,7 @@ a mismatch deletes the file.
 | Live preview update | < 1 s | median 0.56 s, max 1.1 s |
 | Accessibility scan (navigation) | < 300 ms | 26–70 ms for a browser tab strip or page |
 | Model load (cold) | < 2 s | 0.9 s |
+| Standby CPU per phrase heard (not the wake word) | as low as possible | ~0.5 CPU-s quick pass (was 6–14 CPU-s for a full pass) |
 
 Platforms with GPU/NPU acceleration (Apple Metal / Core ML, Android NNAPI, Snapdragon NPU) should use it; the budgets
 above are CPU-only on Windows ARM64.

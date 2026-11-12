@@ -41,6 +41,25 @@ An audio context of 768 tokens (15.36 s) is ~3× faster than the default 30 s wi
 
 Cold start to listening: ~2.3 s (model load 0.95 s). Resident memory with `small.en-q8_0`: ~510 MB.
 
+## Standby cost
+
+In Standby the microphone hears everything nearby. Before 0.9.1 every phrase was fully transcribed to look for the wake
+word: one installed copy logged 5,689 transcriptions in a day (2 were “Hey Jarvis”), ~56 min of Whisper time on 8
+spinning threads, an average of ~15 % of a core and up to ~30 % in meetings.
+
+0.9.1 adds a quick pass on the first 3 s (same small.en model, 2 threads, audio context 256, ≤ 8 tokens, no temperature
+fallback) and runs the full pass only when it may hold the wake word or a command. Snapdragon X Elite, 63 synthetic
+wake clips (2 voices × 3 speeds) + 134 non-wake clips (FLEURS read speech cut to 5 s, dictation clips):
+
+| | CPU per non-wake phrase | Wake clips caught |
+|---|---|---|
+| Full pass (before) | 6.3–14 CPU-s (8 threads spin while ~1–2.5 s pass) | 57/63 woke |
+| Quick pass alone | ~0.5 CPU-s | 63/63 passed to the full pass |
+| Quick pass + full pass when needed (0.9.1) | ~0.5 CPU-s + full pass for ~7 % (wake-like or command-like) | 57/63 woke (same clips) |
+
+Things that did *not* help: a small audio context with temperature fallback on made Whisper loop (“David Klokar,
+David Klokar, …”) and cost more than the full pass; the token cap and no fallback are what make the quick pass cheap.
+The quick pass shares the loaded model (no extra memory measured).
 ## Noisy room (v0.2)
 
 Live microphone tests on this laptop found the v0.1 energy detector never saw the pauses: room noise and music sat around −50 dBFS while its noise floor tracked the quietest moments (−60 to −63 dBFS), so “Open GitHub Copilot” became an 8.6 s utterance merged with whatever followed (“not a command I know”).

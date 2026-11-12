@@ -55,6 +55,40 @@ public class WakeWordAndActionTests
         Assert.Contains("Hey Jarvis", _statuses[^1].Message, StringComparison.Ordinal);
     }
 
+    // Standby's quick pass: only phrases that may hold the wake word, or a command said without it, get a full transcription.
+    [Theory]
+    [InlineData("Hey Jarvis, open", true)]
+    [InlineData("Hey Jervis", true)]
+    [InlineData("hey jar vis open", true)]
+    [InlineData("Jarvi, open Note", true)]
+    [InlineData("Open Notepad", true)]
+    [InlineData("Go to the second tab", true)]
+    [InlineData("So the quarterly numbers look", false)]
+    [InlineData("Thanks everyone for joining", false)]
+    [InlineData("Yes", false)]
+    [InlineData("Two", false)]
+    [InlineData("", false)]
+    public void Standby_quick_pass_keeps_only_wake_words_and_commands(string rough, bool worth) =>
+        Assert.Equal(worth, _controller.WorthTranscribingInStandby(rough));
+
+    [Fact]
+    public void Custom_wake_words_are_checked_too()
+    {
+        var parser = new CommandParser(wakeWords: ["hey friday"]);
+        Assert.True(parser.MayContainWakeWord("Hey Fryday, open"));
+        Assert.False(parser.MayContainWakeWord("Hey Jarvis, open"));
+    }
+
+    [Fact]
+    public void A_wake_word_without_a_name_skips_the_quick_pass() =>
+        Assert.True(new CommandParser(wakeWords: ["hey pc"]).MayContainWakeWord("Hey PC"));
+
+    [Theory]
+    [InlineData("Open the downloads folder in", true)]
+    [InlineData("So the quarterly numbers look", false)]
+    public void A_long_phrase_cut_short_that_starts_like_a_command_gets_the_full_pass(string rough, bool worth) =>
+        Assert.Equal(worth, _controller.WorthTranscribingInStandby(rough, cutShort: true));
+
     [Fact]
     public async Task Standby_ignores_speech_without_the_wake_word_silently()
     {

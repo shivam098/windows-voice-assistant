@@ -207,6 +207,8 @@ public sealed partial class CommandParser
     private readonly string _prefix;
     private readonly bool _requirePrefixWhileTyping;
     private readonly IReadOnlyList<string> _wakeWords;
+    private readonly List<string> _wakeNames;
+    private readonly bool _wakeUncheckable;
     private readonly PhraseMemory? _memory;
 
     public CommandParser(string commandPrefix = "computer", bool requirePrefixWhileTyping = false, IEnumerable<string>? wakeWords = null, PhraseMemory? memory = null)
@@ -220,6 +222,12 @@ public sealed partial class CommandParser
             .Distinct()
             .OrderByDescending(w => w.Length)
             .ToList();
+
+        // The name in each wake phrase (its last word: "hey jarvis" → "jarvis"), for the standby pre-check.
+        _wakeNames = _wakeWords.Select(w => w.Split(' ')[^1]).Where(w => w.Length >= 3).Distinct().ToList();
+
+        // A wake phrase without a usable name ("hey pc") can't be pre-checked: every phrase then gets a full transcription.
+        _wakeUncheckable = _wakeWords.Any(w => w.Split(' ')[^1].Length < 3);
     }
 
     /// <summary>The clock for reminder times (“tomorrow at 5”). Tests set it.</summary>
@@ -391,6 +399,80 @@ public sealed partial class CommandParser
                     : new ParsedUtterance { Commands = WithSpokenReplacement(learned ? commands : WithUntrimmedEdit(commands, normalized)!, cleaned), WokeUp = woke, CommandText = text, FromLearnedPhrase = learned };
             }
         }
+    }
+
+    /// <summary>
+    /// Cheap pre-check for standby: could this rough transcript contain the wake word? Lenient on purpose (a false yes
+    /// only costs a full transcription; a false no ignores the user): any word, or two adjacent words joined, within a
+    /// small edit distance of a wake word's name (“jarvis”, “jervis”, “jar vis”, “jarvi”).
+    /// </summary>
+    public bool MayContainWakeWord(string transcript)
+    {
+        if (_wakeUncheckable)
+        {
+            return true;
+        }
+
+        var words = TranscriptText.Normalize(transcript).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0)
+        {
+            return false;
+        }
+
+        foreach (var name in _wakeNames)
+        {
+            var allowed = name.Length >= 5 ? 2 : name.Length >= 3 ? 1 : 0;
+            for (var i = 0; i < words.Length; i++)
+            {
+                if (EditDistance(words[i], name) <= allowed
+                    || (i + 1 < words.Length && EditDistance(words[i] + words[i + 1], name) <= allowed))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // First words of commands, for a quick transcript that was cut short ("open the downloads folder in…").
+    private static readonly HashSet<string> CommandStarts = new(StringComparer.Ordinal)
+    {
+        "open", "launch", "start", "switch", "go", "click", "select", "press", "search", "show", "close", "new", "type",
+        "scroll", "pause", "stop", "remind", "add", "note", "mark", "delete", "replace", "send", "expand", "refresh",
+        "copy", "paste", "undo", "save", "hide", "focus", "bring", "pull", "fire", "please", "can", "could",
+    };
+
+    /// <summary>Whether a transcript cut short could be the start of a command (its first word starts one).</summary>
+    public static bool MayStartCommand(string transcript) =>
+        TranscriptText.Normalize(transcript).Split(' ', StringSplitOptions.RemoveEmptyEntries) is [var first, ..] && CommandStarts.Contains(first);
+
+    private static int EditDistance(string a, string b)
+    {
+        if (Math.Abs(a.Length - b.Length) > 2)
+        {
+            return 3;
+        }
+
+        var previous = new int[b.Length + 1];
+        var current = new int[b.Length + 1];
+        for (var j = 0; j <= b.Length; j++)
+        {
+            previous[j] = j;
+        }
+
+        for (var i = 1; i <= a.Length; i++)
+        {
+            current[0] = i;
+            for (var j = 1; j <= b.Length; j++)
+            {
+                current[j] = Math.Min(Math.Min(current[j - 1] + 1, previous[j] + 1), previous[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1));
+            }
+
+            (previous, current) = (current, previous);
+        }
+
+        return previous[b.Length];
     }
 
     private bool TryStripWakeWord(ref string normalized)

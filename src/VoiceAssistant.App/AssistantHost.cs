@@ -36,6 +36,16 @@ internal sealed class AssistantHost : IDisposable
     private readonly SoundFeedback _sounds;
     private readonly DictationFormatter _formatter;
     private WhisperRecognizer? _recognizer;
+
+    // Standby hears everything near the microphone (meetings, videos, people talking). Transcribing all of it in full
+    // kept one core ~15-30% busy all day. The wake-word check transcribes only the start of each phrase, with a small
+    // audio window, a few tokens, two threads and no retries: ~10x less CPU, and the full pass runs only when it may
+    // hold the wake word or a command (docs/BENCHMARKS.md, "Standby cost").
+    private const int WakeCheckThreads = 2;
+    private const int WakeCheckAudioContext = 256; // 5.1 s window
+    private const int WakeCheckMaxTokens = 8;
+    private const int WakeCheckSeconds = 3;
+    private WhisperRecognizer? _wakeCheck;
     private volatile WhisperRecognizer? _hinglish;
     private volatile WhisperRecognizer? _hinglishAccurate;
     private readonly object _hinglishGate = new();
@@ -597,6 +607,7 @@ internal sealed class AssistantHost : IDisposable
         _sounds.Dispose();
         if (drained)
         {
+            _wakeCheck?.Dispose(); // shares _recognizer's model: dispose first
             _recognizer?.Dispose();
             _hinglish?.Dispose();
             _hinglishAccurate?.Dispose();
@@ -736,6 +747,16 @@ internal sealed class AssistantHost : IDisposable
                 Prompt = _settings.VocabularyPrompt,
             })).ConfigureAwait(false);
             await _recognizer.TranscribeAsync(new float[SampleRate], _shutdown.Token).ConfigureAwait(false);
+
+            // The standby pre-check: the same model on the first seconds of each phrase, cut short (see WakeCheck*).
+            _wakeCheck = _recognizer.WithOptions(new RecognizerOptions
+            {
+                Threads = WakeCheckThreads,
+                AudioContextSize = WakeCheckAudioContext,
+                MaxTokens = WakeCheckMaxTokens,
+                TemperatureFallback = false,
+            });
+            await _wakeCheck.TranscribeAsync(new float[SampleRate], _shutdown.Token).ConfigureAwait(false);
 
             var vadPath = Path.Combine(AppPaths.ModelsDir, _settings.VadModelFile);
             if (File.Exists(vadPath))
@@ -997,7 +1018,17 @@ internal sealed class AssistantHost : IDisposable
         }
 
         using var cancel = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token, Volatile.Read(ref _actionCts).Token);
-        if (_controller.Mode != InteractionMode.Standby)
+        if (_controller.Mode == InteractionMode.Standby && _wakeCheck is { } wakeCheck)
+        {
+            var head = samples.Length > WakeCheckSeconds * SampleRate ? samples[..(WakeCheckSeconds * SampleRate)] : samples;
+            var rough = await wakeCheck.TranscribeAsync(head, cancel.Token).ConfigureAwait(false);
+            if (IsStale(generation) || !_controller.WorthTranscribingInStandby(rough.Text, cutShort: head.Length < samples.Length))
+            {
+                Log.Info($"standby: no wake word in {audioMs}ms utterance (check {rough.Elapsed.TotalMilliseconds:F0}ms)");
+                return;
+            }
+        }
+        else if (_controller.Mode != InteractionMode.Standby)
         {
             PostActivity("Transcribing…");
         }
