@@ -12,6 +12,15 @@ public sealed record RecognizerOptions
 
     /// <summary>Optional vocabulary hint. Keep short: Whisper can echo prompts on near-silent input.</summary>
     public string? Prompt { get; init; }
+
+    /// <summary>Stop after this many tokens (0 = no limit). The standby wake-word check only needs the first few words.</summary>
+    public int MaxTokens { get; init; }
+
+    /// <summary>
+    /// Re-decode at higher temperatures when the first attempt looks unreliable (whisper.cpp's default; up to five extra
+    /// passes). Off for the wake-word check: unclear background speech is exactly where retries cost most and help least.
+    /// </summary>
+    public bool TemperatureFallback { get; init; } = true;
 }
 
 public sealed record TranscriptionResult(string Text, float Probability, TimeSpan Elapsed);
@@ -24,18 +33,19 @@ public sealed class WhisperRecognizer : IDisposable
     private const int MinSamples = SampleRate * 11 / 10;
 
     private readonly WhisperFactory _factory;
+    private readonly bool _ownsFactory;
     private readonly WhisperProcessor _processor;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     public WhisperRecognizer(string modelPath, RecognizerOptions? options = null)
+        : this(LoadFactory(modelPath), ownsFactory: true, options ?? new RecognizerOptions())
     {
-        if (!File.Exists(modelPath))
-        {
-            throw new FileNotFoundException("Speech model not found.", modelPath);
-        }
+    }
 
-        options ??= new RecognizerOptions();
-        _factory = WhisperFactory.FromPath(modelPath);
+    private WhisperRecognizer(WhisperFactory factory, bool ownsFactory, RecognizerOptions options)
+    {
+        _factory = factory;
+        _ownsFactory = ownsFactory;
         var builder = _factory.CreateBuilder()
             .WithLanguage("en")
             .WithThreads(options.Threads)
@@ -53,8 +63,27 @@ public sealed class WhisperRecognizer : IDisposable
             builder = builder.WithPrompt(options.Prompt);
         }
 
+        if (options.MaxTokens > 0)
+        {
+            builder = builder.WithMaxTokensPerSegment(options.MaxTokens);
+        }
+
+        if (!options.TemperatureFallback)
+        {
+            builder = builder.WithTemperatureInc(0);
+        }
+
         _processor = builder.Build();
     }
+
+    /// <summary>
+    /// Another recognizer on the same loaded model with different settings (no second copy of the model in memory).
+    /// Dispose it before this one.
+    /// </summary>
+    public WhisperRecognizer WithOptions(RecognizerOptions options) => new(_factory, ownsFactory: false, options);
+
+    private static WhisperFactory LoadFactory(string modelPath) =>
+        File.Exists(modelPath) ? WhisperFactory.FromPath(modelPath) : throw new FileNotFoundException("Speech model not found.", modelPath);
 
     public async Task<TranscriptionResult> TranscribeAsync(float[] samples, CancellationToken cancellationToken = default)
     {
@@ -101,7 +130,7 @@ public sealed class WhisperRecognizer : IDisposable
         try
         {
             var disposed = Task.Run(async () => await _processor.DisposeAsync().ConfigureAwait(false)).Wait(TimeSpan.FromSeconds(5));
-            if (disposed)
+            if (disposed && _ownsFactory)
             {
                 _factory.Dispose();
             }

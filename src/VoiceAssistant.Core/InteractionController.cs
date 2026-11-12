@@ -187,8 +187,7 @@ public sealed partial class InteractionController
 
         if (parsed.IsEmpty)
         {
-            if (Mode == InteractionMode.Standby &&
-                _parser.Parse(transcript, InteractionMode.Command).Commands.Any(c => c.Kind is not (CommandKind.Confirm or CommandKind.Cancel or CommandKind.Choose or CommandKind.ShowNumbers or CommandKind.HideNumbers)))
+            if (Mode == InteractionMode.Standby && IsCommandWithoutWakeWord(transcript))
             {
                 // A real command without the wake word: say why nothing happened instead of staying silent.
                 // ("yes", "no", "two" are everyday words: stay silent for those.)
@@ -613,6 +612,20 @@ public sealed partial class InteractionController
     }
 
     private DateTimeOffset BoardNow() => _parser.BoardClock();
+
+    /// <summary>
+    /// In standby, whether a quick, rough transcript of the start of a phrase is worth transcribing in full: it may hold
+    /// the wake word, or it is a command said without it (which gets a hint). Everything else — conversation, videos,
+    /// meetings — is ignored after the quick pass, which keeps always-on listening cheap.
+    /// </summary>
+    /// <param name="cutShort">The quick pass saw only the start of the phrase, so a long command may not parse yet.</param>
+    public bool WorthTranscribingInStandby(string rough, bool cutShort = false) =>
+        !_options.WakeWordEnabled || _parser.MayContainWakeWord(rough) || IsCommandWithoutWakeWord(rough)
+        || (cutShort && CommandParser.MayStartCommand(rough));
+
+    // "yes", "no", "two" are everyday words: no hint for those.
+    private bool IsCommandWithoutWakeWord(string transcript) =>
+        _parser.Parse(transcript, InteractionMode.Command).Commands.Any(c => c.Kind is not (CommandKind.Confirm or CommandKind.Cancel or CommandKind.Choose or CommandKind.ShowNumbers or CommandKind.HideNumbers));
 
     /// <summary>Adds to the idea board, opens it, or ticks an item off; says what happened.</summary>
     private bool ExecuteBoard(VoiceAssistant.Board.BoardIntent intent, string heard, bool noTextBox = false)
