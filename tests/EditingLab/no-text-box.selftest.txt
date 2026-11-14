@@ -1,4 +1,4 @@
-# Push-to-talk with a list focused (no text box): the dictation goes to the idea board, nothing is typed.
+# Ctrl+Win dictation with a list focused (no text box): the dictation goes to the idea board, nothing is typed.
 stoponfail
 expecttitle: No Text Lab
 expectfocus: report.docx

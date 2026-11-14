@@ -19,11 +19,13 @@ navigation scenarios run with `tests/NavigationLab/run.ps1`.
 
 | # | Steps | Expected |
 |---|---|---|
-| D1 | Cursor in a text box; hold push-to-talk, say “um so the demo is ready comma can you check it question mark”, release | “So the demo is ready, can you check it?” inserted |
-| D2 | Hold push-to-talk and speak for 20 s | Words appear in the pill while speaking; full text inserted on release |
-| D3 | Hold push-to-talk, press another key (system shortcut) | Recording discarded |
-| D4 | Hold push-to-talk, press Esc | Cancelled; nothing inserted |
-| D5 | Clipboard holds X; dictate with push-to-talk | Text inserted; clipboard is X again; item not in clipboard history |
+| D1 | Cursor in a text box; tap Ctrl+Win, say “um so the demo is ready comma can you check it question mark”, tap Ctrl+Win again | “So the demo is ready, can you check it?” inserted |
+| D2 | Tap Ctrl+Win, let go of the keys and speak for 20 s, then tap again | Level meter moves and words appear in the pill while speaking; “Transcribing…” after the second tap; full text inserted |
+| D3 | Press Ctrl+Win plus another key (system shortcut, e.g. Ctrl+Win+D) | The recording that press started is discarded |
+| D4 | Tap Ctrl+Win, speak, press Esc | Cancelled; nothing inserted |
+| D4b | Hold Ctrl+Win for 3 s while speaking, release, keep speaking, tap Ctrl+Win | Releasing does not stop the recording; everything said is inserted after the tap |
+| D4c | Tap Ctrl+Win+Space, speak, tap Ctrl+Win+Space | Same as Ctrl+Win; no space typed |
+| D5 | Clipboard holds X; dictate with Ctrl+Win | Text inserted; clipboard is X again; item not in clipboard history |
 | D6 | Switch on Hindi + English; dictate “kal ki meeting reschedule kar do” | Roman-script Hinglish inserted; pill shows HI + EN |
 | D7 | Password field focused; dictate | Refused with a message; nothing typed |
 | D8 | Tray › Dictation language › Hindi + English — accurate; dictate the same phrase | Live preview still updates; text typed by the accurate model (log `model=hinglish-accurate`); pill shows HI + EN · accurate; Alt+Shift+H toggles English ↔ accurate |
@@ -69,8 +71,8 @@ navigation scenarios run with `tests/NavigationLab/run.ps1`.
 | B2 | Close the window; say “Hey Jarvis, open Notepad” | Notepad opens (the assistant kept running); a one-time tray balloon explains it |
 | B3 | Start the app again from the Start menu while it runs | The running copy's window comes to the front; no second copy, no message box |
 | B4 | Sign out and in with “Start when I sign in” on | Tray icon only; no window |
-| B5 | Notepad focused; hold push-to-talk: “add to my ideas, a voice game for kids” | Nothing typed in Notepad; the note is under Ideas; pill confirms |
-| B6 | Hold push-to-talk: “please remind me to send the slides” | Typed as dictation, not filed |
+| B5 | Notepad focused; Ctrl+Win dictation: “add to my ideas, a voice game for kids” | Nothing typed in Notepad; the note is under Ideas; pill confirms |
+| B6 | Ctrl+Win dictation: “please remind me to send the slides” | Typed as dictation, not filed |
 | B7 | “Hey Jarvis, remind me to stretch in 1 minute” | Reminders shows it with a time; after ~1 min a card appears bottom-right with a sound; typing in another app isn't interrupted |
 | B8 | On the card, press Snooze 10 min; then Done when it returns | It comes back 10 min later; Done ticks it off |
 | B9 | “Hey Jarvis, show my reminders” | Window opens on the board with the Reminders column outlined |
@@ -78,8 +80,8 @@ navigation scenarios run with `tests/NavigationLab/run.ps1`.
 | B11 | “Hey Jarvis, tick the checkbox” on a page with one | Not a board request (no “couldn't find” warning on the board) |
 | B12 | Add a reminder for 1 minute, exit, wait 2 minutes, start the app | The missed reminder pops up at start |
 | B13 | Settings: change “Pause that ends a phrase” to 1500, Save and restart | App restarts; the value is in `settings.json` |
-| B14 | Click the desktop; hold push-to-talk: “I have to draft a reply to Tata Neu” | Nothing typed; To-do gets “Draft a reply to Tata Neu”; pill: “No text box, so I saved it…” |
-| B15 | A list has focus (`tests/EditingLab/run.ps1 -Lab NoTextBox`); push-to-talk an idea, a to-do and a timed reminder | Each lands in Ideas, To-do, Reminders; nothing typed |
+| B14 | Click the desktop; Ctrl+Win dictation: “I have to draft a reply to Tata Neu” | Nothing typed; To-do gets “Draft a reply to Tata Neu”; pill: “No text box, so I saved it…” |
+| B15 | A list has focus (`tests/EditingLab/run.ps1 -Lab NoTextBox`); dictate (Ctrl+Win) an idea, a to-do and a timed reminder | Each lands in Ideas, To-do, Reminders; nothing typed |
 
 B5–B6 and B10–B11 are also covered by unit tests (`tests/VoiceAssistant.Board.Tests`, `BoardVoiceTests`).
 

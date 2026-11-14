@@ -35,7 +35,7 @@ public enum FieldCheck
     Unknown,
 
     /// <summary>
-    /// Nothing that takes text has focus: the desktop, the taskbar, or a list, button or link. Push-to-talk files the
+    /// Nothing that takes text has focus: the desktop, the taskbar, or a list, button or link. Ctrl+Win dictation files the
     /// dictation on the idea board instead of typing it.
     /// </summary>
     NotText,

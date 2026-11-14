@@ -2,23 +2,41 @@
 
 Two ways to dictate. Both produce the same cleaned-up text.
 
-| | Push-to-talk / hands-free (keys) | Voice typing (“start typing”) |
+| | Tap-to-dictate (keys) | Voice typing (“start typing”) |
 |---|---|---|
-| Start | Hold **Ctrl+Win**; or **Ctrl+Win+Space** for hands-free | Say “start typing” (Command mode) |
+| Start | Tap **Ctrl+Win** (press and let go); **Ctrl+Win+Space** does the same | Say “start typing” (Command mode) |
 | Target | Wherever the cursor is when the text is inserted | The text box bound when typing started |
-| Inserted | When the keys are released / pressed again | After each pause (~1 s) |
-| Stop | Release keys / Ctrl+Win+Space again; **Esc** cancels | “stop typing” (nothing sent) or “send” |
+| Inserted | After Ctrl+Win is tapped again | After each pause (~1 s) |
+| Stop | Tap **Ctrl+Win** again; **Esc** cancels; stops by itself after `maxDictationSeconds` | “stop typing” (nothing sent) or “send” |
 
-## Push-to-talk (Windows reference)
+## Tap-to-dictate (Windows reference)
 
-- Holding Ctrl+Win starts recording at once (tone). Releasing with no other key pressed transcribes and inserts.
-- Any other key pressed while Ctrl+Win is held means a system shortcut (e.g. Ctrl+Win+D): recording is discarded.
-- Ctrl+Win+Space while holding switches to hands-free; Ctrl+Win+Space again finishes.
+There is no push-to-talk: the keys never have to be held.
+
+- Pressing Ctrl+Win starts recording at once (tone). Releasing the keys does nothing, and holding them for a long time
+  does not stop the recording.
+- Tapping Ctrl+Win again finishes: when the keys are released, recording stops (tone), the pill shows “Transcribing…”,
+  and the text is inserted. Finishing on release means no modifier is down while the text is typed.
+- Ctrl+Win+Space is an alias for Ctrl+Win (the Space is swallowed), kept from when it toggled hands-free.
+- Another key pressed together with the Ctrl+Win that started recording means a system shortcut (e.g. Ctrl+Win+D):
+  that recording is discarded. A Ctrl+Win shortcut used while recording leaves the recording running.
 - Esc while recording cancels (the Esc press is swallowed).
+- A recording still going after `maxDictationSeconds` (default 300; 0 = no limit) is finished and inserted by itself,
+  so the microphone can't stay on by mistake.
+- If a recording stops on its own (model still loading, microphone error, time limit) the next tap starts a new one.
 - Works while listening is paused (the key press is explicit consent; the microphone opens only while recording).
 - Releasing Win must not open the Start menu (inject an unassigned key first).
-- Platform mapping: macOS should use **Fn (Globe)** hold, as Wispr Flow does; see [platform-porting.md](platform-porting.md).
+- The key logic lives in `TapToDictateKeys` (Core, unit-tested); the Windows hook only maps key events onto it.
+- Platform mapping: macOS taps **Fn (Globe)**; Android taps a floating button or the keyboard's mic key (tap to start,
+  tap again to finish); see [platform-porting.md](platform-porting.md).
 
+## Status pill while dictating
+
+- Recording: red level meter that moves with the microphone level (so it's clear the voice is being captured), the
+  live preview below, and the hint “Ctrl+Win to finish · Esc to cancel”.
+- After the second tap: “Transcribing…” with animated dots and a pulsing dot, shown before the preview is stopped and
+  transcription starts. The last preview stays (dimmed) until the text is inserted, an error is shown, or “I didn't
+  hear any speech.”
 ## Live preview
 
 While recording, the pill shows the words as they are recognised:
@@ -28,7 +46,7 @@ While recording, the pill shows the words as they are recognised:
   (voice-activity regions; cut at the window edge if there's no pause), and keep its text, so each update covers at
   most 12 s of audio. Silence-only audio is dropped (keeping its last second).
 - Show the formatted text (same clean-up as the final text); long text shows its latest ~150 characters with “…”.
-- On release, wait for an in-flight preview update (Whisper can't be cancelled mid-run), then run the final
+- On finish, wait for an in-flight preview update (Whisper can't be cancelled mid-run), then run the final
   full-quality transcription. Utterances the voice-command listener completed during that wait are discarded.
 - Setting: `livePreview` (default on).
 
@@ -78,7 +96,7 @@ leading space when the box already ends in a non-space character.
 - Line breaks use the app's new-line keys (Shift+Enter in chat apps so they don't send; Enter in editors).
 - Wait for the user to release modifier keys before inserting.
 - Refuse password fields and windows running with higher privileges (see [safety-and-privacy.md](safety-and-privacy.md)).
-- With **no text box** in focus (desktop, taskbar, a list, a button), save push-to-talk text on the idea board instead
+- With **no text box** in focus (desktop, taskbar, a list, a button), save Ctrl+Win dictation text on the idea board instead
   of discarding it ([idea-board.md](idea-board.md#dictation-with-nowhere-to-type)).
 
 ## Hindi + English (Hinglish)
@@ -96,13 +114,13 @@ leading space when the box already ends in a non-space character.
   (with progress every 10 %) the first time that option is chosen.
 - **Commands always use the English model.** In voice typing, each phrase is first parsed with the English model;
   only if it's not a command is the Hindi model asked for the text to type.
-- Each push-to-talk recording keeps the model it started with, even if the language is switched mid-recording.
+- Each Ctrl+Win dictation recording keeps the model it started with, even if the language is switched mid-recording.
 - **Vocabulary hint:** the accurate model gets the user's word list (`dictationVocabulary`) as its Whisper prompt, which
   measurably fixes jargon (“vibe code”, “GitHub Copilot”). The fast model never gets it: with a prompt it outputs
   garbage (“while,”). Output that only repeats the word list is dropped (on noise and silence it wasn't seen in tests).
 - **Phrase length while voice typing:** a phrase ends after ~1.1 s of quiet instead of 0.6 s, because Whisper punctuates
   each phrase as a complete sentence; shorter phrases meant stray full stops and capitals mid-sentence. For long
-  passages, push-to-talk (whole recording at once) gives the best punctuation.
+  passages, Ctrl+Win dictation (whole recording at once) gives the best punctuation.
 
 ## Paste last / untyped text
 

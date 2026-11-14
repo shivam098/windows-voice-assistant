@@ -3,7 +3,7 @@ using VoiceAssistant.Core;
 
 namespace VoiceAssistant.Core.Tests;
 
-/// <summary>Idea board by voice (docs/specs/idea-board.md): commands, push-to-talk routing, and what stays typed.</summary>
+/// <summary>Idea board by voice (docs/specs/idea-board.md): commands, Ctrl+Win dictation routing, and what stays typed.</summary>
 public class BoardVoiceTests
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 11, 14, 30, 0, TimeSpan.FromHours(5.5));

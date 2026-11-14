@@ -7,7 +7,7 @@ pull request as the code.
 | Spec | Covers |
 |---|---|
 | [product.md](product.md) | Principles, modes (paused / standby / command / typing), wake word, status pill, sounds, learning, settings |
-| [dictation.md](dictation.md) | Push-to-talk, hands-free, live preview, text clean-up, insertion, Hindi + English |
+| [dictation.md](dictation.md) | Tap-to-dictate (Ctrl+Win), live preview, text clean-up, insertion, Hindi + English |
 | [voice-commands.md](voice-commands.md) | Command grammar: apps, typing, editing keys, strict vs. lenient matching |
 | [navigation.md](navigation.md) | Tabs, clicking by name, numbers, confirmations, “start typing in X”, the current place |
 | [idea-board.md](idea-board.md) | Ideas, brainstorm, to-do and reminder notes by voice; reminder times and pop-ups; the app window |

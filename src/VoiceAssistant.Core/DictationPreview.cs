@@ -1,7 +1,7 @@
 namespace VoiceAssistant.Core;
 
 /// <summary>
-/// Live transcript while push-to-talk or hands-free dictation is recording. Each update re-transcribes the
+/// Live transcript while Ctrl+Win dictation is recording. Each update re-transcribes the
 /// audio after the last committed point; once that exceeds the recognizer window, the oldest part is
 /// transcribed once, cut at a pause, and kept, so each update costs at most a window of audio.
 /// </summary>

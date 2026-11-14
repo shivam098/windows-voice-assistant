@@ -29,8 +29,8 @@ type, send) hands-free. Everything runs on the device.
 
 | Mode | Listens for | Pill |
 |---|---|---|
-| **Paused** | Nothing (microphone off). Push-to-talk still works. | Grey: “Paused · hold Ctrl+Win to dictate” |
-| **Standby** | Only the wake word. Other speech is ignored silently. | Light blue: “Say ‘Hey Jarvis’ · hold Ctrl+Win to dictate” |
+| **Paused** | Nothing (microphone off). Ctrl+Win dictation still works. | Grey: “Paused · tap Ctrl+Win to dictate” |
+| **Standby** | Only the wake word. Other speech is ignored silently. | Light blue: “Say ‘Hey Jarvis’ · tap Ctrl+Win to dictate” |
 | **Command** | Any command, without the wake word, for **30 s** after the last command | Blue: “Listening for a command” |
 | **Typing** | Everything is typed into the bound text box, except a short list of strict commands | Red: “Typing — say ‘stop typing’ when done” |
 
@@ -48,7 +48,8 @@ type, send) hands-free. Everything runs on the device.
 A small, always-on-top, **never-focused** window at the bottom centre of the screen:
 
 - Mode dot and label (colours above); a **HI + EN** badge when Hindi + English dictation is on.
-- Live words while push-to-talk records (see [dictation.md](dictation.md)).
+- While Ctrl+Win dictation records: a voice-level meter, the live words and “Ctrl+Win to finish · Esc to cancel”; after
+  the second tap an animated “Transcribing…” until the text is inserted (see [dictation.md](dictation.md)).
 - The last message (fades after **6 s**) and, in italics, what was heard.
 - The **current place** after a navigation command: “📍 Google Chrome › YouTube › Search” (see [navigation.md](navigation.md)).
 - A **–** button minimises it: it then appears only while there is something to show (awake, typing, recording,
@@ -57,7 +58,7 @@ A small, always-on-top, **never-focused** window at the bottom centre of the scr
 
 ## Feedback sounds
 
-Short tones (can be turned off with `soundFeedback`): wake word heard, typing started, typing stopped, push-to-talk
+Short tones (can be turned off with `soundFeedback`): wake word heard, typing started, typing stopped, Ctrl+Win dictation
 start and end, cancel.
 
 ## Learning

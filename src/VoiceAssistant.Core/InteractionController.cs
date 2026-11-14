@@ -297,12 +297,12 @@ public sealed partial class InteractionController
     }
 
     /// <summary>
-    /// Push-to-talk / hands-free dictation: formats the transcript and types it wherever the cursor is.
+    /// Ctrl+Win dictation: formats the transcript and types it wherever the cursor is.
     /// The user's explicit key press is the consent, so only password and administrator windows are refused.
     /// </summary>
     public void InsertDictation(string transcript)
     {
-        // Push-to-talk that names a list ("add to my ideas …") is filed on the board instead of typed.
+        // Ctrl+Win dictation that names a list ("add to my ideas …") is filed on the board instead of typed.
         if (Board is not null && VoiceAssistant.Board.BoardGrammar.Parse(TranscriptText.Clean(transcript), BoardNow(), explicitOnly: true) is { Action: VoiceAssistant.Board.BoardAction.Add } intent)
         {
             ExecuteBoard(intent, TranscriptText.Clean(transcript));
@@ -974,7 +974,7 @@ public sealed partial class InteractionController
         var leadingSpace = _desktop.FocusedTextEndsWithNonWhitespace() == true && formatted[0] != '\n';
         TypeWithNewLines(leadingSpace ? " " + formatted : formatted, profile?.NewLineKeys ?? "Shift+Enter");
 
-        // Push-to-talk text isn't part of the voice “scratch that” history.
+        // Ctrl+Win dictation text isn't part of the voice “scratch that” history.
         _segments.Clear();
         _typedTail = null;
         LastTranscript = formatted;

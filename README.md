@@ -47,8 +47,9 @@ Put the cursor in any text box, then:
 
 | Do | Result |
 |---|---|
-| **Hold `Ctrl`+`Win`**, speak, release | Your words show live in the overlay while you speak, then are inserted at the cursor |
-| **`Ctrl`+`Win`+`Space`** | Hands-free dictation; press again to insert |
+| **Tap `Ctrl`+`Win`** (press and let go), speak | Recording starts; no need to hold the keys. The pill shows a live voice-level meter and your words as you speak |
+| **Tap `Ctrl`+`Win` again** | Recording stops, the pill shows “Transcribing…”, then the text is inserted at the cursor |
+| **`Ctrl`+`Win`+`Space`** | Same as `Ctrl`+`Win` (tap to start, tap again to finish) |
 | **`Esc`** while recording | Cancel |
 | **`Alt`+`Shift`+`Z`** | Paste the last dictation again |
 | **`Alt`+`Shift`+`H`** | Switch dictation between English and **Hindi + English** (see below) |
@@ -68,7 +69,7 @@ Press **`Alt`+`Shift`+`H`** (or tray menu › *Dictation language* › *Hindi + 
 
 - Uses [Oriserve's Whisper-Hindi2Hinglish-Swift](https://huggingface.co/Oriserve/Whisper-Hindi2Hinglish-Swift) model (Apache-2.0, see [third-party notices](docs/THIRD-PARTY-NOTICES.md)), still fully on this PC. It downloads once (~80 MB, SHA-256 verified) the first time you switch it on.
 - Voice commands (“Hey Jarvis…”, “send”, “stop typing”) keep using the English model, so they work the same in both modes.
-- **More accurate, but slower:** tray › *Dictation language* › *Hindi + English — accurate* uses Oriserve's larger [Whisper-Hindi2Hinglish-Apex](https://huggingface.co/Oriserve/Whisper-Hindi2Hinglish-Apex) for the typed text (about 2.5 s per phrase on a Snapdragon X Elite, slower on older PCs; one-time 830 MB download). Words still show live while you speak (from the fast model); the accurate text is typed when you release. Alt+Shift+H then switches between English and the accurate mode.
+- **More accurate, but slower:** tray › *Dictation language* › *Hindi + English — accurate* uses Oriserve's larger [Whisper-Hindi2Hinglish-Apex](https://huggingface.co/Oriserve/Whisper-Hindi2Hinglish-Apex) for the typed text (about 2.5 s per phrase on a Snapdragon X Elite, slower on older PCs; one-time 830 MB download). Words still show live while you speak (from the fast model); the accurate text is typed when you tap `Ctrl`+`Win` to finish. Alt+Shift+H then switches between English and the accurate mode.
 - English accuracy is lower in this mode (it misheard “pull request” as “poll request” in testing), so switch back for English-only writing. See [BENCHMARKS.md](docs/BENCHMARKS.md#hindi--english).
 
 ## 2. Voice control — “Hey Jarvis”
@@ -118,7 +119,7 @@ Speak naturally — polite padding is understood: *“Hey Jarvis, can you open N
 "Hey Jarvis, open GitHub Copilot and start typing"  →  "Fix the failing test"  →  "Send"
 ```
 
-**Status pill:** light blue = waiting for “Hey Jarvis”, blue = listening for a command, red = typing/dictating, grey = paused. `Ctrl+Alt+Space` (or the Home page's Pause button) pauses/resumes listening; push-to-talk works even while paused. Click **–** on the pill to hide it while idle: it then appears only for “Hey Jarvis”, `Ctrl+Win`, typing, and messages. Tray menu › **Always show status pill** brings it back.
+**Status pill:** light blue = waiting for “Hey Jarvis”, blue = listening for a command, red = typing/dictating, grey = paused. `Ctrl+Alt+Space` (or the Home page's Pause button) pauses/resumes listening; Ctrl+Win dictation works even while paused. Click **–** on the pill to hide it while idle: it then appears only for “Hey Jarvis”, `Ctrl+Win`, typing, and messages. Tray menu › **Always show status pill** brings it back.
 
 ## 3. Navigate by voice: tabs, buttons, text boxes
 
@@ -151,15 +152,15 @@ Say it and it's filed as a sticky note in the app window (**Idea board** page), 
 
 | Say | Result |
 |---|---|
-| Hold `Ctrl`+`Win`: “Add to my ideas, a voice game for kids” | Filed under Ideas (not typed) |
+| Tap `Ctrl`+`Win`, say “Add to my ideas, a voice game for kids”, tap again | Filed under Ideas (not typed) |
 | “Add renew passport to my to-do list” · “Add to brainstorming, pricing ideas” | To-do · Brainstorm |
 | “Hey Jarvis, remind me to call mom tomorrow at 5 pm” | A reminder that pops up at 5 pm tomorrow |
 | “Hey Jarvis, note down that the demo needs subtitles” | Ideas |
 | “Hey Jarvis, show my reminders” / “…show my board” | Opens the window on that list / the whole board |
 | “Hey Jarvis, mark renew passport as done” / “…tick off renew passport” | Ticks it off |
 
-- Requests that **name a list** (“add … to my to-do list”) work with push-to-talk; looser ones (“remind me…”, “note down…”) need “Hey Jarvis”, so dictating “please remind me to send the slides” to a colleague still types it.
-- **Nowhere to type?** If you hold `Ctrl`+`Win` with no text box in focus (desktop, taskbar, a file or chat list, a button), what you say is saved on the board instead of lost: a task with a future time (“call the bank tomorrow at 11”) becomes a reminder, a task (“I have to …”, “buy milk”) a to-do, anything else an idea.
+- Requests that **name a list** (“add … to my to-do list”) work with Ctrl+Win dictation; looser ones (“remind me…”, “note down…”) need “Hey Jarvis”, so dictating “please remind me to send the slides” to a colleague still types it.
+- **Nowhere to type?** If you dictate with `Ctrl`+`Win` with no text box in focus (desktop, taskbar, a file or chat list, a button), what you say is saved on the board instead of lost: a task with a future time (“call the bank tomorrow at 11”) becomes a reminder, a task (“I have to …”, “buy milk”) a to-do, anything else an idea.
 - Reminder times: “in 10 minutes”, “at 5:30 pm”, “tonight”, “tomorrow morning”, “on Friday at 10 am”, “next Monday”. When one is due, a card appears in the bottom-right corner (without taking keyboard focus) with **Done**, **Snooze 10 min** and **Open board**. Reminders that came due while the app was closed appear when it starts.
 - In the window: type a note in a column's box and press Enter; tick the checkbox when done; double-click to edit; right-click to move, snooze or delete.
 - Notes are saved in `%APPDATA%\VoiceAssistant\board.json`, on this PC only.
@@ -169,7 +170,7 @@ The board lives in its own project (`src/VoiceAssistant.Board`, no Windows code)
 ## Safety and privacy
 
 - **Bound to one window.** Voice dictation goes only to the window where you said “start typing”. If focus moves, nothing is typed or sent; the text is kept in memory (tray → *Copy text that wasn't typed*).
-- **Refuses** password fields and windows running as administrator. Voice dictation also refuses fields it can't verify; push-to-talk (an explicit key press) allows them.
+- **Refuses** password fields and windows running as administrator. Voice dictation also refuses fields it can't verify; Ctrl+Win dictation (an explicit key press) allows them.
 - **Whole-utterance commands only**: a sentence containing “send” never sends. Low-confidence commands are ignored.
 - **Clicks are checked**: destructive buttons (delete, merge, sign out, pay…) need a spoken “yes”, and nothing is clicked if another window came to the front.
 - **Music and noise are dropped** by Silero before transcription; long speech while waiting for a command (meetings) is skipped.
@@ -184,9 +185,10 @@ Most settings are on the window's **Settings** page (*Save and restart* applies 
 |---|---|---|
 | `wakeWordEnabled` / `wakeWords` / `awakeSeconds` | `true` / “hey jarvis”… / `30` | Wake word behaviour |
 | `learnFromUsage` | `true` | Learn rephrasings and app usage (`learned.json`) |
-| `soundFeedback` | `true` | Tones on wake, typing start/stop, push-to-talk |
-| `pushToTalk` | `true` | `Ctrl+Win` dictation keys |
+| `soundFeedback` | `true` | Tones on wake, typing start/stop, Ctrl+Win dictation |
+| `pushToTalk` | `true` | `Ctrl+Win` dictation keys: tap to start, tap again to finish (name kept for older settings files) |
 | `livePreview` | `true` | Show words in the overlay while `Ctrl+Win` dictation records (re-transcribes every ~0.6 s; uses extra CPU while recording) |
+| `maxDictationSeconds` | `300` | A `Ctrl+Win` recording still going after this long is finished and inserted by itself; `0` = no limit |
 | `pasteLastHotkey` | `Alt+Shift+Z` | |
 | `dictationLanguageHotkey` | `Alt+Shift+H` | Switch dictation between English and Hindi + English |
 | `hinglishModelFile` | `ggml-hinglish-swift-q8_0.bin` | Hindi + English dictation model (downloaded on first use) |
@@ -252,6 +254,6 @@ Regenerate the logo with `powershell -File assets\make-logo.ps1`. See the **[ste
 - English, plus Hindi + English dictation (Alt+Shift+H); voice commands are English only. A headset works best in noisy rooms.
 - Clicking by name needs apps that expose accessibility names (most apps and all major browsers do). Apps drawn entirely on a canvas (some games, remote desktops) can't be clicked yet; there's no OCR or mouse grid.
 - Inline “scratch that” is rule-based: it removes the phrase before it, not a single corrected word (“meet at 2, scratch that, 3” keeps only “3”). For precise fixes say “delete the last two words” or “replace the word 2 with 3”. Spoken edits follow fixed phrasings (see [voice-commands.md](docs/specs/voice-commands.md#editing-what-you-typed)); Wispr's AI rewrites and tones need a language model and aren't included.
-- Voice dictation inserts text after each pause (~1 s), not word by word. Push-to-talk inserts when you release the keys.
+- Voice dictation inserts text after each pause (~1 s), not word by word. Ctrl+Win dictation inserts when you tap `Ctrl`+`Win` again.
 - `Ctrl+Win` combinations used by Windows (e.g. `Ctrl+Win+D`) still work; the recording is discarded.
 - Plain “Copilot” opens the Start menu app named *Copilot* (Microsoft Copilot). Say “GitHub Copilot”.

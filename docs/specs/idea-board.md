@@ -1,7 +1,7 @@
 # Idea board specification
 
 A voice-first board of sticky notes in four lists: **Ideas**, **Brainstorm**, **To-do** and **Reminders**. Notes are
-added by voice (push-to-talk or “Hey Jarvis”) or typed in the app window. Reminders with a time pop up when they're
+added by voice (Ctrl+Win dictation or “Hey Jarvis”) or typed in the app window. Reminders with a time pop up when they're
 due.
 
 The board is its own project, `src/VoiceAssistant.Board` (no Windows or UI code), so it can move to a separate
@@ -23,7 +23,7 @@ period dropped).
 
 ### Explicit list requests: work everywhere
 
-They name a list, so they must not be mistaken for dictation. With **push-to-talk** (`Ctrl`+`Win`) these are filed on
+They name a list, so they must not be mistaken for dictation. With **Ctrl+Win dictation** these are filed on
 the board **instead of being typed**; while voice typing they need the wake word (“Hey Jarvis, add to my ideas …”) and
 typing carries on afterwards.
 
@@ -37,16 +37,16 @@ typing carries on afterwards.
 
 Verbs: add, put, save, write, note, jot. Prepositions: to, in, into, on, onto, under. Optional “my”, “the”, “our”.
 Leading filler is ignored: “and”, “also”, “so”, “um”, “okay”, “can you (please)” (“and add to my reminders, …”). With
-push-to-talk, “can / could / would / will you …” means you're asking someone else, so it is typed.
+Ctrl+Win dictation, “can / could / would / will you …” means you're asking someone else, so it is typed.
 
-With push-to-talk the list must also be clearly *yours*: “my” or “our” before it, or a name only the board uses (ideas,
+With Ctrl+Win dictation the list must also be clearly *yours*: “my” or “our” before it, or a name only the board uses (ideas,
 brainstorm, reminders). So “put the agenda on the board”, “add these to the tasks” and “please add the action items to
 the notes” are typed as dictation, while “put the agenda on my board” is filed.
 
 ### Wake-word requests (“Hey Jarvis, …”)
 
 These are common in ordinary speech (“please remind me to send the slides” in a message to a colleague), so
-push-to-talk **must** type them; only a command (wake word, or command mode) may treat them as board requests.
+Ctrl+Win dictation **must** type them; only a command (wake word, or command mode) may treat them as board requests.
 
 | Say | Result |
 |---|---|
@@ -89,7 +89,7 @@ pops up.
 
 ## Dictation with nowhere to type
 
-When push-to-talk ends and there's **no text box** to type into, the dictation is saved on the board instead of being
+When Ctrl+Win dictation ends and there's **no text box** to type into, the dictation is saved on the board instead of being
 lost. The pill says “No text box, so I saved it. Added to …”.
 
 “No text box” is deliberately narrow, so dictation into apps with unusual text boxes (terminals, editors, spreadsheet
@@ -112,7 +112,7 @@ Which list it goes to (only clear tasks become to-dos or reminders; everything e
 Nothing is saved for dictation with no words (“new line” on its own). “Paste last dictation” (`Alt`+`Shift`+`Z`)
 never files to the board.
 
-With push-to-talk into a text box, a request that starts “can / could / would / will you …” is always typed: it's
+With Ctrl+Win dictation into a text box, a request that starts “can / could / would / will you …” is always typed: it's
 addressed to someone else.
 
 ## Storage

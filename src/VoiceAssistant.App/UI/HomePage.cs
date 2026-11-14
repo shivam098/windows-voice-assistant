@@ -79,9 +79,9 @@ internal sealed class HomePage : UserControl
         tips.Children.Add(new TextBlock { Text = "Quick start", FontSize = 15, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 8) });
         foreach (var tip in new[]
         {
-            "Hold Ctrl+Win, speak, release: your words are typed where the cursor is.",
+            "Tap Ctrl+Win, speak, tap Ctrl+Win again: your words are typed where the cursor is.",
             "Say “Hey Jarvis, open Chrome”, then “go to the search box”.",
-            "Hold Ctrl+Win and say “Add to my ideas, …” to save a thought without typing it anywhere.",
+            "Tap Ctrl+Win and say “Add to my ideas, …” (tap again to finish) to save a thought without typing it anywhere.",
             "“Hey Jarvis, remind me to stretch in 30 minutes.”",
         })
         {
@@ -145,8 +145,8 @@ internal sealed class HomePage : UserControl
         {
             InteractionMode.Dictation => ("Typing", "Speaking types into the chosen text box. Say “stop typing” when done.", "#EA4335"),
             InteractionMode.Command => ("Listening for a command", "Say a command now, e.g. “open Notepad”.", "#4C8DF6"),
-            InteractionMode.Standby => ("Listening for “Hey Jarvis”", "Hold Ctrl+Win any time to dictate.", "#34A853"),
-            _ => ("Paused", "The microphone is off. Hold Ctrl+Win still dictates.", "#9AA0A6"),
+            InteractionMode.Standby => ("Listening for “Hey Jarvis”", "Tap Ctrl+Win any time to dictate; tap it again to finish.", "#34A853"),
+            _ => ("Paused", "The microphone is off. Tapping Ctrl+Win still dictates.", "#9AA0A6"),
         };
         _dot.Fill = _dotColor;
         Motion.ToColor(_dotColor, Theme.Color(colour), 220);

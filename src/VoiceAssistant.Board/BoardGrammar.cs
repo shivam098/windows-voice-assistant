@@ -14,7 +14,7 @@ public sealed record BoardIntent(BoardAction Action, BoardList? List, string Tex
 
 /// <summary>
 /// The board's voice grammar (docs/specs/idea-board.md). Works on the transcript as spoken (capitals and punctuation
-/// kept for the note). <c>explicitOnly</c> is for push-to-talk, where everything else is typed: only requests that name
+/// kept for the note). <c>explicitOnly</c> is for Ctrl+Win dictation, where everything else is typed: only requests that name
 /// a list (“add to my ideas …”, “add … to my to-do list”) go to the board; “remind me to …”, “note down …” and the rest
 /// need the wake word, because people also dictate such sentences to others.
 /// </summary>
@@ -24,7 +24,7 @@ public static partial class BoardGrammar
     {
         var text = spoken.Trim().Replace('’', '\'');
 
-        // "Can you add the slides to our tasks" with push-to-talk is a request to a colleague, typed as dictation.
+        // "Can you add the slides to our tasks" with Ctrl+Win dictation is a request to a colleague, typed as dictation.
         if (explicitOnly && AskingSomeoneRegex().IsMatch(text))
         {
             return null;
@@ -36,7 +36,7 @@ public static partial class BoardGrammar
             m = AddToListLastRegex().Match(text);
         }
 
-        // Push-to-talk types everything else, so a sentence for someone else ("put the agenda on the board", "add these
+        // Ctrl+Win dictation types everything else, so a sentence for someone else ("put the agenda on the board", "add these
         // to the tasks") must stay dictation: there the list needs "my"/"our" or a name only the board uses.
         if (m.Success && ListFrom(m.Groups["list"].Value) is { } list && (!explicitOnly || m.Groups["det"].Success || BoardOnlyName(m.Groups["list"].Value)))
         {

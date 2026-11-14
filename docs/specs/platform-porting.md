@@ -17,7 +17,7 @@ limits. **Verify the starred (\*) items with a spike before committing to a desi
 
 | Capability | Windows | macOS | Android | iOS |
 |---|---|---|---|---|
-| **Push-to-talk hotkey** | Low-level keyboard hook: hold Ctrl+Win | `CGEventTap` on `flagsChanged`: hold **Fn/Globe** (Input Monitoring permission) | Not global. Floating button or a keyboard (IME) mic key | Keyboard extension key (\*keyboards can't use the microphone: hand off to the container app to record) |
+| **Tap-to-dictate hotkey** (tap to start, tap again to finish; never hold) | Low-level keyboard hook: tap Ctrl+Win | `CGEventTap` on `flagsChanged`: tap **Fn/Globe** (Input Monitoring permission) | Not global. Tap a floating button or a keyboard (IME) mic key to start, tap it again to finish | Keyboard extension key (\*keyboards can't use the microphone: hand off to the container app to record) |
 | **Always-listening wake word** | Microphone stream in the tray app | Same (menu-bar app) | Foreground service with microphone type and a persistent notification | Not allowed in the background; in-app only |
 | **Insert text** | Clipboard paste (history/cloud excluded) or `SendInput` Unicode | `NSPasteboard` + Cmd+V via `CGEvent` (mark transient/concealed types); or `AXUIElementSetAttributeValue` on `kAXSelectedTextAttribute` | `ACTION_SET_TEXT` / paste on the focused node, or an IME that commits text | Keyboard extension `insertText` |
 | **Password field check** | UIA `IsPassword` | `kAXSecureTextFieldSubrole`; `IsSecureEventInputEnabled()` | `AccessibilityNodeInfo.isPassword()` | Secure fields block custom keyboards automatically |
@@ -46,7 +46,7 @@ limits. **Verify the starred (\*) items with a spike before committing to a desi
 
 | Feature | Windows | macOS | Android | iOS |
 |---|---|---|---|---|
-| Push-to-talk dictation into any app | ✅ | ✅ | ✅ (IME / button) | ✅ (keyboard, via app hand-off \*) |
+| Tap-to-dictate into any app | ✅ | ✅ | ✅ (IME / button) | ✅ (keyboard, via app hand-off \*) |
 | Live preview | ✅ | ✅ | ✅ | ✅ (in keyboard/app) |
 | Hindi + English | ✅ | ✅ | ✅ | ✅ |
 | Wake word + voice commands | ✅ | ✅ | ✅ (foreground service) | ⚠️ in-app only |
@@ -60,7 +60,7 @@ limits. **Verify the starred (\*) items with a spike before committing to a desi
 1. Swift Package with the core logic + XCTest suites ported from `VoiceAssistant.Core.Tests` (parser, matcher, resolver,
    formatter, segmenter, controller with a fake desktop).
 2. Menu-bar app: AVAudioEngine 16 kHz capture, whisper.cpp xcframework (Metal) with the same models, Silero VAD.
-3. Fn push-to-talk + paste insertion + pill + live preview (the dictation-only app could ship here).
+3. Fn tap-to-dictate + paste insertion + pill (level meter, live preview, “Transcribing…”) (the dictation-only app could ship here).
 4. Wake word, core commands, `AXUIElement` desktop layer.
 5. Navigation: AX scans, AXPress, tabs, overlay badges; run [acceptance-tests.md](acceptance-tests.md) N1–N9 with the
    same HTML pages in `tests/NavigationLab` opened in Chrome and Safari.

@@ -29,14 +29,8 @@ public partial class App : System.Windows.Application
     private DictationKeyHook? _keyHook;
     private OverlayWindow? _overlay;
     private MarkerOverlay? _markers;
-    private DictationState _dictation;
-
-    private enum DictationState
-    {
-        None,
-        Holding,
-        HandsFree,
-    }
+    private bool _recording;
+    private int _recordingId;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -122,6 +116,19 @@ public partial class App : System.Windows.Application
         };
         _host.Activity += (mode, activity) => _overlay.ShowMode(mode, activity);
         _host.DictationPreview += _overlay.ShowPreview;
+        _host.InputLevel += _overlay.ShowInputLevel;
+        _host.CaptureStopped += id =>
+        {
+            // Recording couldn't start or stopped by itself: stop treating the keys (and Esc) as recording.
+            if (id == _recordingId && _recording)
+            {
+                _recording = false;
+                if (_keyHook is not null)
+                {
+                    _keyHook.IsRecording = false;
+                }
+            }
+        };
         _host.DictationLanguageChanged += _overlay.SetDictationLanguage;
         _overlay.SetDictationLanguage(_host.HinglishDictation, _host.HinglishAccurate);
         _markers = new MarkerOverlay();
@@ -160,7 +167,7 @@ public partial class App : System.Windows.Application
         base.OnExit(e);
     }
 
-    /// <summary>Wispr-style keys: hold Ctrl+Win to talk, Ctrl+Win+Space for hands-free, Esc to cancel.</summary>
+    /// <summary>Tap Ctrl+Win (or Ctrl+Win+Space) to start dictating, tap it again to finish; Esc cancels.</summary>
     private void InstallDictationKeys()
     {
         _keyHook = new DictationKeyHook(Dispatcher);
@@ -170,60 +177,33 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        void Begin(DictationState state, string label)
-        {
-            _dictation = state;
-            _keyHook.IsRecording = true;
-            _host!.BeginDictationCapture(label);
-        }
-
         void End(bool cancel)
         {
-            _dictation = DictationState.None;
+            _recording = false;
             _keyHook.IsRecording = false;
             _host!.EndDictationCapture(cancel);
         }
 
-        _keyHook.HoldStarted += () =>
+        _keyHook.StartPressed += () =>
         {
-            if (_dictation == DictationState.None)
+            if (!_recording)
             {
-                Begin(DictationState.Holding, "Dictating… release Ctrl+Win to type");
+                _recording = true;
+                _recordingId++;
+                _keyHook.IsRecording = true;
+                _host!.BeginDictationCapture(_recordingId);
             }
         };
-        _keyHook.HoldEnded += () =>
+        _keyHook.FinishPressed += () =>
         {
-            if (_dictation == DictationState.Holding)
+            if (_recording)
             {
                 End(cancel: false);
             }
         };
-        _keyHook.HoldAborted += () =>
-        {
-            if (_dictation == DictationState.Holding)
-            {
-                End(cancel: true);
-            }
-        };
-        _keyHook.HandsFreeToggled += () =>
-        {
-            switch (_dictation)
-            {
-                case DictationState.Holding:
-                    _dictation = DictationState.HandsFree;
-                    _host!.BeginDictationCapture("Dictating hands-free… Ctrl+Win+Space to finish");
-                    break;
-                case DictationState.HandsFree:
-                    End(cancel: false);
-                    break;
-                default:
-                    Begin(DictationState.HandsFree, "Dictating hands-free… Ctrl+Win+Space to finish");
-                    break;
-            }
-        };
         _keyHook.CancelPressed += () =>
         {
-            if (_dictation != DictationState.None)
+            if (_recording)
             {
                 End(cancel: true);
             }
