@@ -36,7 +36,7 @@ internal sealed class SettingsPage : UserControl
         stack.Children.Add(Section("Dictation",
             Check("Tap Ctrl+Win to dictate into any app (tap again to finish)", settings.PushToTalk, (s, v) => s.PushToTalk = v),
             Number("Stop a Ctrl+Win dictation by itself after (seconds, 0 = never)", settings.MaxDictationSeconds, 0, 3600, (s, v) => s.MaxDictationSeconds = v,
-                "If you forget to tap Ctrl+Win again, the recording is typed after this long so the microphone doesn't stay on."),
+                "If you forget to tap Ctrl+Win again, the recording is typed after this long so the microphone doesn't stay on (default 600 = 10 minutes)."),
             Check("Show my words in the status pill while I speak", settings.LivePreview, (s, v) => s.LivePreview = v),
             Check("Remove filler words (“um”, “basically”, “thik hai na”, “haan to like”…)", settings.RemoveFillerWords, (s, v) => s.RemoveFillerWords = v),
             Check("Say punctuation (“comma”, “new line”)", settings.SpokenPunctuation, (s, v) => s.SpokenPunctuation = v),

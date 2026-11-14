@@ -167,9 +167,9 @@ internal sealed class AppSettings
 
     /// <summary>
     /// A Ctrl+Win recording that is still going after this many seconds (Ctrl+Win was never tapped again) is finished
-    /// and typed, so the microphone can't stay on by mistake. 0 turns the limit off.
+    /// and typed, so the microphone can't stay on by mistake. Default 600 (10 minutes); 0 turns the limit off.
     /// </summary>
-    public int MaxDictationSeconds { get; set; } = 300;
+    public int MaxDictationSeconds { get; set; } = 600;
 
     public string PasteLastHotkey { get; set; } = "Alt+Shift+Z";
 

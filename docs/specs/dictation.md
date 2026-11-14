@@ -21,7 +21,7 @@ There is no push-to-talk: the keys never have to be held.
 - Another key pressed together with the Ctrl+Win that started recording means a system shortcut (e.g. Ctrl+Win+D):
   that recording is discarded. A Ctrl+Win shortcut used while recording leaves the recording running.
 - Esc while recording cancels (the Esc press is swallowed).
-- A recording still going after `maxDictationSeconds` (default 300; 0 = no limit) is finished and inserted by itself,
+- A recording still going after `maxDictationSeconds` (default 600, i.e. 10 minutes; 0 = no limit) is finished and inserted by itself,
   so the microphone can't stay on by mistake.
 - If a recording stops on its own (model still loading, microphone error, time limit) the next tap starts a new one.
 - Works while listening is paused (the key press is explicit consent; the microphone opens only while recording).

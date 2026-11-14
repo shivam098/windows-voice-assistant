@@ -188,7 +188,7 @@ Most settings are on the window's **Settings** page (*Save and restart* applies 
 | `soundFeedback` | `true` | Tones on wake, typing start/stop, Ctrl+Win dictation |
 | `pushToTalk` | `true` | `Ctrl+Win` dictation keys: tap to start, tap again to finish (name kept for older settings files) |
 | `livePreview` | `true` | Show words in the overlay while `Ctrl+Win` dictation records (re-transcribes every ~0.6 s; uses extra CPU while recording) |
-| `maxDictationSeconds` | `300` | A `Ctrl+Win` recording still going after this long is finished and inserted by itself; `0` = no limit |
+| `maxDictationSeconds` | `600` | A `Ctrl+Win` recording still going after this long is finished and inserted by itself; `0` = no limit |
 | `pasteLastHotkey` | `Alt+Shift+Z` | |
 | `dictationLanguageHotkey` | `Alt+Shift+H` | Switch dictation between English and Hindi + English |
 | `hinglishModelFile` | `ggml-hinglish-swift-q8_0.bin` | Hindi + English dictation model (downloaded on first use) |
