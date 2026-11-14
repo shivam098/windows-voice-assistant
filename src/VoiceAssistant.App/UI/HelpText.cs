@@ -6,16 +6,18 @@ internal static class HelpText
     public static readonly IReadOnlyList<(string Title, string[] Lines)> Sections =
     [
         ("Dictate anywhere", [
-            "Hold Ctrl+Win, speak, release → the text is typed where your cursor is",
-            "Ctrl+Win+Space → hands-free dictation; press again to finish",
+            "Tap Ctrl+Win (press and let go) → recording starts; no need to hold the keys",
+            "Speak: the pill shows your voice level and your words as you say them",
+            "Tap Ctrl+Win again → “Transcribing…”, then the text is typed where your cursor is",
+            "Ctrl+Win+Space works the same as Ctrl+Win",
             "Esc → cancel  ·  Alt+Shift+Z → paste the last dictation again",
             "Say “comma”, “question mark”, “new line”; “um/uh” are removed",
             "“…scratch that…” drops the phrase before it",
             "Alt+Shift+H → Hindi + English (typed in Roman letters); press again for English",
         ]),
         ("Idea board", [
-            "Hold Ctrl+Win: “Add to my ideas, a voice game for kids” → filed on the board, not typed",
-            "Hold Ctrl+Win with no text box in focus (desktop, a list) → saved on the board: a task with a time → Reminders, “I have to …” / “buy milk” → To-do, else Ideas",
+            "Tap Ctrl+Win: “Add to my ideas, a voice game for kids”, tap again → filed on the board, not typed",
+            "Ctrl+Win dictation with no text box in focus (desktop, a list) → saved on the board: a task with a time → Reminders, “I have to …” / “buy milk” → To-do, else Ideas",
             "“Add renew passport to my to-do list” · “Add to brainstorming, pricing ideas”",
             "“Hey Jarvis, remind me to call mom tomorrow at 5 pm” → a reminder pops up then",
             "“Hey Jarvis, note down that the demo needs subtitles” → Ideas",

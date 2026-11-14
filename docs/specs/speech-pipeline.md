@@ -4,7 +4,7 @@ How audio becomes text. Every platform should reproduce these parameters; deviat
 [docs/BENCHMARKS.md](../BENCHMARKS.md).
 
 ```text
-Microphone 16 kHz mono ─┬─ push-to-talk held ──► buffer ──► Silero chunks ≤14 s ─► Whisper ─► format ─► insert
+Microphone 16 kHz mono ─┬─ Ctrl+Win recording ─► buffer ──► Silero chunks ≤14 s ─► Whisper ─► format ─► insert
                         │                          └─► live preview every 0.6 s ─► pill
                         └─ listening ─► utterance segmenter ─► Silero (drop noise, split) ─► Whisper ─► parser ─► controller
 ```
@@ -12,7 +12,7 @@ Microphone 16 kHz mono ─┬─ push-to-talk held ──► buffer ──► Si
 ## Capture
 
 - 16 kHz, 16-bit, mono; 30 ms buffers. The default recording device unless configured.
-- While push-to-talk records, audio goes to its buffer only (not to the voice-command segmenter).
+- While Ctrl+Win dictation records, audio goes to its buffer only (not to the voice-command segmenter).
 - The microphone is open only while listening or recording.
 
 ## Utterance segmentation (voice commands and voice typing)
@@ -37,7 +37,7 @@ Energy-based, robust to fans and background music:
 - Threshold 0.5; minimum speech 150 ms; minimum silence 250 ms; no padding.
 - Voice utterances: drop if no speech; **split** at speech gaps ≥ 600 ms (≥ 1,100 ms while voice typing) (each piece padded 250 ms) so a command glued to
   earlier speech by background noise is handled on its own.
-- Push-to-talk: chunk the recording into ≤ 14 s pieces at speech gaps (padded 200 ms); no speech → “I didn't hear any speech.”
+- Ctrl+Win dictation: chunk the recording into ≤ 14 s pieces at speech gaps (padded 200 ms); no speech → “I didn't hear any speech.”
 
 ## Recognition (Whisper)
 

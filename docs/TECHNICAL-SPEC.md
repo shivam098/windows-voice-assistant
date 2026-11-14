@@ -13,7 +13,7 @@ v0.2 adds Wispr-style dictation, the “Hey Jarvis” wake word, app actions, an
 |---|---|
 | Phrase detection | Energy VAD with a **median** background estimate and an 80%-quiet end window, then **Silero** (whisper.cpp VAD) on each utterance to drop non-speech and split merged phrases |
 | Wake word | “Hey Jarvis” (+ common Whisper spellings). Standby ignores other speech silently; commands work for 8 s after the wake word, extended by each command |
-| Dictate anywhere | Hold `Ctrl+Win` (low-level keyboard hook), `Ctrl+Win+Space` hands-free, `Esc` cancel, `Alt+Shift+Z` paste last. Long recordings are chunked at Silero pauses into ≤14 s pieces |
+| Dictate anywhere | Tap `Ctrl+Win` to start and again to finish (low-level keyboard hook, `TapToDictateKeys`), `Ctrl+Win+Space` alias, `Esc` cancel, auto-stop after `maxDictationSeconds`, `Alt+Shift+Z` paste last. Long recordings are chunked at Silero pauses into ≤14 s pieces |
 | Text insertion | Clipboard paste with Clipboard-History/cloud exclusion formats; previous clipboard restored unless it changed. `Type` (SendInput) remains available |
 | Dictation clean-up | Rule-based: fillers, spoken punctuation, inline “scratch that”, replacements, snippets, capitalisation across phrases, no trailing full stop in search boxes |
 | App actions | Per-app `textArea` (`Bottom`/`Largest`) + `textAreaName`; browser `searchKeys` (`Ctrl+L`); UIA “search” box lookup elsewhere; “search for …”; key presses and editing shortcuts |

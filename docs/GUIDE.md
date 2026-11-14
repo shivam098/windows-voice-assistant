@@ -30,10 +30,10 @@ To uninstall: `.\scripts\uninstall.ps1` (add `-RemoveData` to also delete models
 ### Dictate anywhere
 
 1. Click into any text box (email, chat, document, browser).
-2. **Hold `Ctrl` + `Win`** and speak. Your words appear live in the overlay at the bottom of the screen; **release** and the text appears at the cursor.
+2. **Tap `Ctrl` + `Win`** (press and let go) and speak; there's no need to hold the keys. The overlay at the bottom of the screen shows a moving voice-level meter, your words as you speak, and “Ctrl+Win to finish · Esc to cancel”. **Tap `Ctrl` + `Win` again**: the overlay shows “Transcribing…” and the text appears at the cursor. `Ctrl` + `Win` + `Space` works the same way; a recording stops by itself after 10 minutes and the text is typed (`maxDictationSeconds`).
 3. For longer dictation press **`Ctrl` + `Win` + `Space`**, talk, and press it again to insert.
 4. `Esc` cancels; `Alt` + `Shift` + `Z` pastes the last dictation again.
-5. **Hindi + English:** press `Alt` + `Shift` + `H` (or tray › *Dictation language*) to dictate in Hindi, English, or a mix; Hindi is typed in Roman letters. The pill shows **HI + EN** while it's on. The first time, it downloads its model (~80 MB). Press again for English, which is more accurate for English-only text. Voice commands stay in English. If Hindi words come out wrong too often, choose tray › *Dictation language* › *Hindi + English — accurate*: fewer mistakes, but a few seconds per phrase (one-time 830 MB download). Add words you use often (names, jargon) to `dictationVocabulary` in the settings file so the accurate model spells them right. For long passages, hold Ctrl+Win and speak the whole thing: one recording gets better punctuation than many short voice-typing phrases.
+5. **Hindi + English:** press `Alt` + `Shift` + `H` (or tray › *Dictation language*) to dictate in Hindi, English, or a mix; Hindi is typed in Roman letters. The pill shows **HI + EN** while it's on. The first time, it downloads its model (~80 MB). Press again for English, which is more accurate for English-only text. Voice commands stay in English. If Hindi words come out wrong too often, choose tray › *Dictation language* › *Hindi + English — accurate*: fewer mistakes, but a few seconds per phrase (one-time 830 MB download). Add words you use often (names, jargon) to `dictationVocabulary` in the settings file so the accurate model spells them right. For long passages, tap Ctrl+Win, speak the whole thing and tap it again: one recording gets better punctuation than many short voice-typing phrases.
 
 Say punctuation (“comma”, “question mark”, “new line”); “um/uh” are removed automatically.
 
@@ -63,7 +63,7 @@ Speak naturally — “can you please open Notepad for me” works. If it doesn'
 
 ### Capture ideas, to-dos and reminders
 
-1. Hold `Ctrl` + `Win` and say **“Add to my ideas, a voice game for kids”**. It's filed on the window's **Idea board** page instead of being typed. Name any list: ideas, brainstorm(ing), to-do, reminders (“add renew passport to my to-do list”).
+1. Tap `Ctrl` + `Win`, say **“Add to my ideas, a voice game for kids”** and tap `Ctrl` + `Win` again. It's filed on the window's **Idea board** page instead of being typed. Name any list: ideas, brainstorm(ing), to-do, reminders (“add renew passport to my to-do list”).
 2. **“Hey Jarvis, remind me to call mom tomorrow at 5 pm.”** At 5 pm a card pops up in the bottom-right corner: **Done**, **Snooze 10 min**, or **Open board**. It doesn't take keyboard focus, so it won't interrupt your typing.
 3. **“Hey Jarvis, note down that the demo needs subtitles”** adds to Ideas; **“Hey Jarvis, show my reminders”** opens the board; **“Hey Jarvis, mark renew passport as done”** ticks it off.
 4. In the window you can also type a note in a column's box (Enter adds it), tick notes off, double-click to edit, and right-click to move, snooze or delete.

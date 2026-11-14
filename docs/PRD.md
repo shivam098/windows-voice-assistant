@@ -118,7 +118,7 @@ User direction: dictation should match Wispr Flow's features; actions should wor
 
 | Requirement | Status |
 |---|---|
-| Push-to-talk (hold Ctrl+Win), hands-free toggle (Ctrl+Win+Space), Esc cancel, paste last (Alt+Shift+Z) | Done |
+| Tap-to-dictate (tap Ctrl+Win to start, tap again to finish; Ctrl+Win+Space is an alias), Esc cancel, paste last (Alt+Shift+Z) | Done |
 | Filler-word removal, spoken punctuation, inline “scratch that”, personal replacements, snippets | Done (rule-based) |
 | Reliable insertion in every app, clipboard kept private and restored | Done (paste) |
 | “Hey Jarvis” wake word with short command window | Done |

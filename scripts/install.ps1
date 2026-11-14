@@ -191,7 +191,7 @@ if ($NoLaunch) {
 else {
     Write-Host 'Installed. The Voice Assistant window opens; closing it keeps the assistant running in the system tray.' -ForegroundColor Green
 }
-Write-Host '  Dictate anywhere: hold Ctrl+Win, speak, release (Ctrl+Win+Space = hands-free)'
+Write-Host '  Dictate anywhere: tap Ctrl+Win, speak, tap Ctrl+Win again (Esc = cancel)'
 Write-Host '  Voice commands:   "Hey Jarvis, open Notepad" -> "Start typing" -> speak -> "Stop typing"'
 Write-Host '  Idea board:       "Hey Jarvis, add buy milk to my to-do list" / "remind me at 5 pm to call Mom"'
 Write-Host '  Pause or resume listening: Ctrl+Alt+Space. Click the tray icon to open the window.'

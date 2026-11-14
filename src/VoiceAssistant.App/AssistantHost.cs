@@ -8,8 +8,8 @@ namespace VoiceAssistant.App;
 
 /// <summary>
 /// Wires microphone -> utterance segmenter -> Silero VAD -> Whisper -> interaction controller, plus
-/// push-to-talk / hands-free dictation. All controller work runs on one serial queue so utterances are
-/// handled strictly in order.
+/// tap-to-dictate (Ctrl+Win to start, Ctrl+Win again to finish). All controller work runs on one serial queue so
+/// utterances are handled strictly in order.
 /// </summary>
 internal sealed class AssistantHost : IDisposable
 {
@@ -19,6 +19,7 @@ internal sealed class AssistantHost : IDisposable
     private const int MaxQueuedUtterances = 6;
     private const int SampleRate = WhisperRecognizer.SampleRate;
     private const int PreviewIntervalMs = 600;
+    private const int LevelIntervalMs = 50;
 
     private readonly AppSettings _settings;
     private readonly Dispatcher _ui;
@@ -64,6 +65,13 @@ internal sealed class AssistantHost : IDisposable
     private int _queuedUtterances;
     private bool _captureStartedMicrophone;
     private volatile bool _capturing;
+
+    // From the start of a Ctrl+Win recording until its text is typed (or it is cancelled): the pill belongs to the
+    // dictation, so voice listening must not replace its Listening / Transcribing states.
+    private volatile bool _dictationBusy;
+    private volatile int _captureId;
+    private long _lastLevelTicks;
+    private bool _limitReached;
     private volatile bool _pausePending = true;
     private volatile InteractionMode _mode = InteractionMode.Paused;
 
@@ -137,7 +145,7 @@ internal sealed class AssistantHost : IDisposable
         {
             if (_mode != InteractionMode.Standby)
             {
-                PostActivity("Hearing you…");
+                PostVoiceActivity("Hearing you…");
             }
         };
         _segmenter.UtteranceReady += OnUtterance;
@@ -150,9 +158,16 @@ internal sealed class AssistantHost : IDisposable
             CancelPendingWork();
             Enqueue(async () =>
             {
+                var wasCapturing = _capturing;
                 await StopPreviewAsync().ConfigureAwait(false);
                 StopMicrophone();
                 _capturing = false;
+                _dictationBusy = false;
+                if (wasCapturing)
+                {
+                    ReportCaptureStopped(_captureId);
+                }
+
                 PostActivity(null);
                 _controller.SetListening(false);
                 Report(StatusKind.Error, $"The microphone stopped. Press {_settings.Hotkey} to try again.");
@@ -169,8 +184,21 @@ internal sealed class AssistantHost : IDisposable
     /// <summary>Raised on the UI thread.</summary>
     public event Action<StatusUpdate>? Status;
 
-    /// <summary>Raised on the UI thread with a transient activity label (null clears it).</summary>
+    /// <summary>
+    /// Raised on the UI thread with the id passed to <see cref="BeginDictationCapture"/> when that recording couldn't
+    /// start or stopped on its own (model still loading, microphone error, time limit), so the keys stop acting as if
+    /// recording.
+    /// </summary>
+    public event Action<int>? CaptureStopped;
+
+    /// <summary>
+    /// Raised on the UI thread with a transient activity label (null clears it); Ctrl+Win dictation uses
+    /// <see cref="DictationLabels.Listening"/> then <see cref="DictationLabels.Transcribing"/>.
+    /// </summary>
     public event Action<InteractionMode, string?>? Activity;
+
+    /// <summary>Raised on the UI thread about 20 times a second while Ctrl+Win dictation records, with the microphone level (0 to 1).</summary>
+    public event Action<float>? InputLevel;
 
     /// <summary>Raised on the UI thread with the live transcript while dictation records (null clears it).</summary>
     public event Action<string?>? DictationPreview;
@@ -260,16 +288,22 @@ internal sealed class AssistantHost : IDisposable
         });
     }
 
-    /// <summary>Starts recording for push-to-talk or hands-free dictation (works even while paused).</summary>
-    public void BeginDictationCapture(string label) => Enqueue(() =>
+    /// <summary>
+    /// Starts recording for Ctrl+Win dictation (works even while paused). <paramref name="id"/> identifies this
+    /// recording in <see cref="CaptureStopped"/>.
+    /// </summary>
+    public void BeginDictationCapture(int id) => Enqueue(() =>
     {
-        if (_capturing || _recognizer is null)
+        if (_capturing)
         {
-            if (_recognizer is null)
-            {
-                Report(StatusKind.Warning, "Still loading the speech model…");
-            }
+            return Task.CompletedTask;
+        }
 
+        _captureId = id;
+        if (_recognizer is null)
+        {
+            Report(StatusKind.Warning, "Still loading the speech model…");
+            ReportCaptureStopped(id);
             return Task.CompletedTask;
         }
 
@@ -291,10 +325,17 @@ internal sealed class AssistantHost : IDisposable
             {
                 Log.Error($"microphone start failed: {ex.GetType().Name}");
                 Report(StatusKind.Error, "Couldn't open the microphone. Check Settings › Privacy › Microphone.");
+                ReportCaptureStopped(id);
                 return Task.CompletedTask;
             }
         }
 
+        _limitReached = false;
+        _lastLevelTicks = 0;
+        _dictationBusy = true;
+
+        // Phrases the voice listener finished before the key press (still queued) are dropped, not run mid-recording.
+        Interlocked.Increment(ref _generation);
         _capturing = true;
         _captureRecognizer = _recognizer;
         WhisperRecognizer? previewRecognizer = _recognizer;
@@ -326,7 +367,7 @@ internal sealed class AssistantHost : IDisposable
         }
 
         _sounds.Play(SoundFeedback.Cue.StartTyping);
-        PostActivity(label);
+        PostActivity(DictationLabels.Listening);
         if (_settings.LivePreview && previewRecognizer is not null)
         {
             _previewCts = new CancellationTokenSource();
@@ -338,66 +379,71 @@ internal sealed class AssistantHost : IDisposable
         return Task.CompletedTask;
     });
 
-    /// <summary>Stops push-to-talk / hands-free recording; transcribes and types unless cancelled.</summary>
-    public void EndDictationCapture(bool cancel) => Enqueue(async () =>
+    /// <summary>Stops Ctrl+Win dictation; transcribes and types unless cancelled.</summary>
+    public void EndDictationCapture(bool cancel) => Enqueue(() => EndCaptureAsync(cancel));
+
+    /// <param name="cancel">Throw the recording away instead of typing it.</param>
+    /// <param name="onlyId">Stop only if this recording is still the one in progress (time limit).</param>
+    private async Task EndCaptureAsync(bool cancel, int? onlyId = null)
     {
-        if (!_capturing)
+        if (!_capturing || (onlyId is { } id && id != _captureId))
         {
             return;
         }
 
         _capturing = false;
-        await StopPreviewAsync().ConfigureAwait(false);
-        float[] audio;
-        lock (_captureGate)
-        {
-            audio = [.. _capture];
-            _capture.Clear();
-        }
 
-        if (_captureStartedMicrophone || _pausePending || _controller.Mode == InteractionMode.Paused)
-        {
-            // Close the mic if dictation opened it, or if listening was paused while recording.
-            _captureStartedMicrophone = false;
-            StopMicrophone();
-        }
-        else
-        {
-            // Voice listening continues; drop any half-heard phrase from before the key was pressed, and any
-            // phrase the segmenter finished while the live preview was being stopped.
-            Interlocked.Increment(ref _generation);
-            lock (_segmenterGate)
-            {
-                _segmenter.Reset();
-            }
-        }
-
-        PostActivity(null);
-        _sounds.Play(cancel ? SoundFeedback.Cue.Standby : SoundFeedback.Cue.StopTyping);
-        if (cancel)
-        {
-            Report(StatusKind.Info, "Dictation cancelled.");
-            return;
-        }
-
-        var recognizer = _captureRecognizer ?? _recognizer;
-        if (audio.Length < SampleRate / 4 || recognizer is null)
-        {
-            return;
-        }
-
-        IReadOnlyList<float[]> chunks = _detector is null
-            ? SpeechSegments.Chunk(audio, [(TimeSpan.Zero, TimeSpan.FromSeconds((double)audio.Length / SampleRate))], SampleRate, 14000, 0)
-            : SpeechSegments.Chunk(audio, _detector.Detect(audio), SampleRate, 14000, 200);
-        if (chunks.Count == 0)
-        {
-            Report(StatusKind.Info, "I didn't hear any speech.");
-            return;
-        }
-
-        PostActivity("Transcribing…");
+        // Show “Transcribing…” straight away: stopping the live preview may wait for a pass that is still running.
+        PostActivity(cancel ? null : DictationLabels.Transcribing);
         try
         {
+            await StopPreviewAsync().ConfigureAwait(false);
+            float[] audio;
+            lock (_captureGate)
+            {
+                audio = [.. _capture];
+                _capture.Clear();
+            }
+
+            if (_captureStartedMicrophone || _pausePending || _controller.Mode == InteractionMode.Paused)
+            {
+                // Close the mic if dictation opened it, or if listening was paused while recording.
+                _captureStartedMicrophone = false;
+                StopMicrophone();
+            }
+            else
+            {
+                // Voice listening continues; drop any half-heard phrase from before the key was pressed, and any
+                // phrase the segmenter finished while the live preview was being stopped.
+                Interlocked.Increment(ref _generation);
+                lock (_segmenterGate)
+                {
+                    _segmenter.Reset();
+                }
+            }
+
+            _sounds.Play(cancel ? SoundFeedback.Cue.Standby : SoundFeedback.Cue.StopTyping);
+            if (cancel)
+            {
+                Report(StatusKind.Info, "Dictation cancelled.");
+                return;
+            }
+
+            var recognizer = _captureRecognizer ?? _recognizer;
+            if (audio.Length < SampleRate / 4 || recognizer is null)
+            {
+                return;
+            }
+
+            IReadOnlyList<float[]> chunks = _detector is null
+                ? SpeechSegments.Chunk(audio, [(TimeSpan.Zero, TimeSpan.FromSeconds((double)audio.Length / SampleRate))], SampleRate, 14000, 0)
+                : SpeechSegments.Chunk(audio, _detector.Detect(audio), SampleRate, 14000, 200);
+            if (chunks.Count == 0)
+            {
+                Report(StatusKind.Info, "I didn't hear any speech.");
+                return;
+            }
+
             var parts = new List<string>();
             foreach (var chunk in chunks)
             {
@@ -416,12 +462,29 @@ internal sealed class AssistantHost : IDisposable
         }
         finally
         {
+            _dictationBusy = false;
             PostActivity(null);
 
             // The language may have changed during this recording.
             ReleaseAccurateIfUnused();
         }
-    });
+    }
+
+    /// <summary>The recording reached <see cref="AppSettings.MaxDictationSeconds"/>: finish it as if Ctrl+Win was tapped.</summary>
+    private async Task FinishAtLimitAsync(int id)
+    {
+        if (!_capturing || id != _captureId)
+        {
+            return;
+        }
+
+        var seconds = _settings.MaxDictationSeconds;
+        Log.Info($"dictation reached the {seconds}s limit");
+        ReportCaptureStopped(id);
+        await EndCaptureAsync(cancel: false, onlyId: id).ConfigureAwait(false);
+        var limit = seconds % 60 == 0 ? $"{seconds / 60} minute{(seconds == 60 ? string.Empty : "s")}" : $"{seconds} seconds";
+        Report(StatusKind.Info, $"Dictation stops by itself after {limit}. Tap Ctrl+Win to keep going.");
+    }
 
     public void PasteLastTranscript() => Enqueue(() =>
     {
@@ -639,9 +702,27 @@ internal sealed class AssistantHost : IDisposable
     {
         if (_capturing)
         {
+            int recorded;
             lock (_captureGate)
             {
                 _capture.AddRange(samples);
+                recorded = _capture.Count;
+            }
+
+            var now = Environment.TickCount64;
+            if (now - _lastLevelTicks >= LevelIntervalMs)
+            {
+                _lastLevelTicks = now;
+                var level = AudioLevel.Of(samples);
+                Post(() => InputLevel?.Invoke(level));
+            }
+
+            var max = _settings.MaxDictationSeconds;
+            if (max > 0 && !_limitReached && recorded >= (long)max * SampleRate)
+            {
+                _limitReached = true;
+                var id = _captureId;
+                Enqueue(() => FinishAtLimitAsync(id));
             }
 
             return;
@@ -685,7 +766,7 @@ internal sealed class AssistantHost : IDisposable
             : $"Downloading the {what}, one time)…");
         try
         {
-            // Progress shows in the pill only on first run; later downloads must not replace a "Dictating…" label,
+            // Progress shows in the pill only on first run; later downloads must not replace a "Listening…" label,
             // so they report every 10% as a status message instead.
             var lastTenth = 0;
             await ModelDownloader.DownloadAsync(file, AppPaths.ModelsDir, percent =>
@@ -935,7 +1016,7 @@ internal sealed class AssistantHost : IDisposable
     {
         if (_capturing)
         {
-            // Push-to-talk owns the microphone until it ends.
+            // Ctrl+Win dictation owns the microphone until it ends.
             return;
         }
 
@@ -998,7 +1079,7 @@ internal sealed class AssistantHost : IDisposable
         finally
         {
             Interlocked.Decrement(ref _queuedUtterances);
-            PostActivity(null);
+            PostVoiceActivity(null);
         }
     }
 
@@ -1030,7 +1111,7 @@ internal sealed class AssistantHost : IDisposable
         }
         else if (_controller.Mode != InteractionMode.Standby)
         {
-            PostActivity("Transcribing…");
+            PostVoiceActivity("Transcribing…");
         }
 
         var result = await _recognizer.TranscribeAsync(samples, cancel.Token).ConfigureAwait(false);
@@ -1174,10 +1255,21 @@ internal sealed class AssistantHost : IDisposable
         Post(() => DictationPreview?.Invoke(null));
     }
 
+    private void ReportCaptureStopped(int id) => Post(() => CaptureStopped?.Invoke(id));
+
     private void Report(StatusKind kind, string message) =>
         Post(() => Status?.Invoke(new StatusUpdate(_mode, kind, message)));
 
     private void PostActivity(string? activity) => Post(() => Activity?.Invoke(_mode, activity));
+
+    /// <summary>Activity of voice listening and commands; skipped while a Ctrl+Win dictation owns the pill.</summary>
+    private void PostVoiceActivity(string? activity)
+    {
+        if (!_dictationBusy)
+        {
+            PostActivity(activity);
+        }
+    }
 
     private void Post(Action action)
     {

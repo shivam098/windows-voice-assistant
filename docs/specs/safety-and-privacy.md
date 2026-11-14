@@ -16,7 +16,7 @@ These rules apply on every platform. A port that can't meet one must disable the
 | Never act on windows running with higher privileges | The OS blocks it; trying would mislead | Process elevation check |
 | Never write words, titles, element names or clipboard contents to logs or test output | Logs get shared for support | Logs: states, kinds, counts, timings; self-test prints PASS/FAIL and hashes |
 | Never keep the user's clipboard changed | Paste-based insertion borrows it | Restore after ~350 ms if unchanged; mark the item “exclude from history / cloud” |
-| Never leave the microphone open after push-to-talk ends while listening is paused | Expectation of privacy | Microphone closed when the capture that opened it ends |
+| Never leave the microphone open after Ctrl+Win dictation ends while listening is paused | Expectation of privacy | Microphone closed when the capture that opened it ends |
 
 ## Always
 
@@ -30,5 +30,5 @@ These rules apply on every platform. A port that can't meet one must disable the
 
 - No speaker identification: anyone near the microphone can say “Hey Jarvis”. Users should pause listening in meetings.
 - Accessibility names are supplied by apps; an app can mislabel a control. Destructive confirmation is name-based.
-- Push-to-talk inserts into whatever has focus when the keys are released (the key press is the consent); only password
+- Ctrl+Win dictation inserts into whatever has focus when Ctrl+Win is tapped to finish (the key press is the consent); only password
   and elevated targets are refused there.

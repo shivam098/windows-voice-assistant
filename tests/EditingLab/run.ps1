@@ -10,7 +10,7 @@
 #>
 param(
     [Parameter(Mandatory)] [string] $Exe,
-    # Editing: spoken edits in a text box. NoTextBox: push-to-talk with a list focused goes to the idea board.
+    # Editing: spoken edits in a text box. NoTextBox: Ctrl+Win dictation with a list focused goes to the idea board.
     [ValidateSet('Editing', 'NoTextBox')] [string] $Lab = 'Editing'
 )
 

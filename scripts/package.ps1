@@ -126,8 +126,9 @@ START
   The Voice Assistant window opens. Closing it keeps the assistant running: look for the purple microphone icon in the system tray (bottom-right, maybe under the ^ arrow).
 
 DICTATE ANYWHERE
-  Hold Ctrl+Win, speak, release   -> words show live as you speak, then are typed where your cursor is
-  Ctrl+Win+Space                  -> hands-free dictation (press again to finish)
+  Tap Ctrl+Win, speak             -> recording starts (no need to hold); a level meter and your words show live
+  Tap Ctrl+Win again              -> "Transcribing...", then the text is typed where your cursor is
+  Ctrl+Win+Space                  -> same as Ctrl+Win
   Esc cancels  ·  Alt+Shift+Z pastes the last dictation again
 Alt+Shift+H switches dictation to Hindi + English (Hindi typed in Roman letters; downloads ~80 MB once) and back; tray > Dictation language has a slower, more accurate option
 Click - on the status pill to hide it until it's needed (tray menu > Always show status pill brings it back)
@@ -141,7 +142,7 @@ VOICE COMMANDS (start with "Hey Jarvis")
   The window's "What you can say" page has the full list.
 
 IDEA BOARD (the window's Idea board page)
-  Hold Ctrl+Win: "Add to my ideas, a voice game for kids"  ·  "Add renew passport to my to-do list"
+  Ctrl+Win dictation: "Add to my ideas, a voice game for kids"  ·  "Add renew passport to my to-do list"
   "Hey Jarvis, remind me to call mom tomorrow at 5 pm"  ->  a reminder pops up then
   "Hey Jarvis, show my reminders"  ·  "Hey Jarvis, mark renew passport as done"
 

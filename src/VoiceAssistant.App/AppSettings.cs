@@ -150,17 +150,26 @@ internal sealed class AppSettings
 
     public int AwakeSeconds { get; set; } = 30;
 
-    /// <summary>Short tones when the wake word is heard, typing starts/stops, and push-to-talk starts/ends.</summary>
+    /// <summary>Short tones when the wake word is heard, typing starts/stops, and Ctrl+Win dictation starts/ends.</summary>
     public bool SoundFeedback { get; set; } = true;
 
     /// <summary>Learn rephrasings of commands and which apps you open most (stored in learned.json).</summary>
     public bool LearnFromUsage { get; set; } = true;
 
-    /// <summary>Hold Ctrl+Win to dictate into any app (release to type). Ctrl+Win+Space toggles hands-free dictation.</summary>
+    /// <summary>
+    /// Tap Ctrl+Win to dictate into any app, tap it again to type the text (Ctrl+Win+Space works the same; Esc cancels).
+    /// The name is kept from when the keys had to be held, so existing settings files still work.
+    /// </summary>
     public bool PushToTalk { get; set; } = true;
 
     /// <summary>Show the words in the overlay as you speak while Ctrl+Win dictation records (uses extra CPU while recording).</summary>
     public bool LivePreview { get; set; } = true;
+
+    /// <summary>
+    /// A Ctrl+Win recording that is still going after this many seconds (Ctrl+Win was never tapped again) is finished
+    /// and typed, so the microphone can't stay on by mistake. Default 600 (10 minutes); 0 turns the limit off.
+    /// </summary>
+    public int MaxDictationSeconds { get; set; } = 600;
 
     public string PasteLastHotkey { get; set; } = "Alt+Shift+Z";
 

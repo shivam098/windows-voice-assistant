@@ -37,7 +37,7 @@ internal sealed class IdeasPage : UserControl
         DockPanel.SetDock(header, Dock.Top);
         root.Children.Add(header);
 
-        var tip = Theme.Label("Hold Ctrl+Win and say “Add to my ideas, …” or “Add … to my to-do list”. After “Hey Jarvis”: “remind me to call mom tomorrow at 5 pm”. Everything stays on this PC.", 12, Theme.Muted);
+        var tip = Theme.Label("Tap Ctrl+Win and say “Add to my ideas, …” or “Add … to my to-do list”, then tap Ctrl+Win again. After “Hey Jarvis”: “remind me to call mom tomorrow at 5 pm”. Everything stays on this PC.", 12, Theme.Muted);
         tip.Margin = new Thickness(0, -6, 0, 14);
         DockPanel.SetDock(tip, Dock.Top);
         root.Children.Add(tip);
