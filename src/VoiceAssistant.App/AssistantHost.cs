@@ -65,6 +65,10 @@ internal sealed class AssistantHost : IDisposable
     private int _queuedUtterances;
     private bool _captureStartedMicrophone;
     private volatile bool _capturing;
+
+    // From the start of a Ctrl+Win recording until its text is typed (or it is cancelled): the pill belongs to the
+    // dictation, so voice listening must not replace its Listening / Transcribing states.
+    private volatile bool _dictationBusy;
     private volatile int _captureId;
     private long _lastLevelTicks;
     private bool _limitReached;
@@ -141,7 +145,7 @@ internal sealed class AssistantHost : IDisposable
         {
             if (_mode != InteractionMode.Standby)
             {
-                PostActivity("Hearing you…");
+                PostVoiceActivity("Hearing you…");
             }
         };
         _segmenter.UtteranceReady += OnUtterance;
@@ -158,6 +162,7 @@ internal sealed class AssistantHost : IDisposable
                 await StopPreviewAsync().ConfigureAwait(false);
                 StopMicrophone();
                 _capturing = false;
+                _dictationBusy = false;
                 if (wasCapturing)
                 {
                     ReportCaptureStopped(_captureId);
@@ -327,6 +332,10 @@ internal sealed class AssistantHost : IDisposable
 
         _limitReached = false;
         _lastLevelTicks = 0;
+        _dictationBusy = true;
+
+        // Phrases the voice listener finished before the key press (still queued) are dropped, not run mid-recording.
+        Interlocked.Increment(ref _generation);
         _capturing = true;
         _captureRecognizer = _recognizer;
         WhisperRecognizer? previewRecognizer = _recognizer;
@@ -453,6 +462,7 @@ internal sealed class AssistantHost : IDisposable
         }
         finally
         {
+            _dictationBusy = false;
             PostActivity(null);
 
             // The language may have changed during this recording.
@@ -1069,7 +1079,7 @@ internal sealed class AssistantHost : IDisposable
         finally
         {
             Interlocked.Decrement(ref _queuedUtterances);
-            PostActivity(null);
+            PostVoiceActivity(null);
         }
     }
 
@@ -1101,7 +1111,7 @@ internal sealed class AssistantHost : IDisposable
         }
         else if (_controller.Mode != InteractionMode.Standby)
         {
-            PostActivity("Transcribing…");
+            PostVoiceActivity("Transcribing…");
         }
 
         var result = await _recognizer.TranscribeAsync(samples, cancel.Token).ConfigureAwait(false);
@@ -1251,6 +1261,15 @@ internal sealed class AssistantHost : IDisposable
         Post(() => Status?.Invoke(new StatusUpdate(_mode, kind, message)));
 
     private void PostActivity(string? activity) => Post(() => Activity?.Invoke(_mode, activity));
+
+    /// <summary>Activity of voice listening and commands; skipped while a Ctrl+Win dictation owns the pill.</summary>
+    private void PostVoiceActivity(string? activity)
+    {
+        if (!_dictationBusy)
+        {
+            PostActivity(activity);
+        }
+    }
 
     private void Post(Action action)
     {

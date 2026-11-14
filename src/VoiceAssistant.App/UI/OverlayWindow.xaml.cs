@@ -86,6 +86,12 @@ public partial class OverlayWindow : Window
     /// </summary>
     public void ShowMode(InteractionMode mode, string? activity = null)
     {
+        if (_dictating && activity is not (null or DictationLabels.Listening or DictationLabels.Transcribing))
+        {
+            // A Ctrl+Win dictation owns the pill until its text is typed; voice activity must not hide its meter.
+            activity = _activity;
+        }
+
         var wasListening = _activity == DictationLabels.Listening;
         var wasDictationTranscribing = _dictating && _activity == DictationLabels.Transcribing;
         _mode = mode;
