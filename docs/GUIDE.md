@@ -66,7 +66,7 @@ Speak naturally — “can you please open Notepad for me” works. If it doesn'
 1. Tap `Ctrl` + `Win`, say **“Add to my ideas, a voice game for kids”** and tap `Ctrl` + `Win` again. It's filed on the window's **Idea board** page instead of being typed. Name any list: ideas, brainstorm(ing), to-do, reminders (“add renew passport to my to-do list”).
 2. **“Hey Jarvis, remind me to call mom tomorrow at 5 pm.”** At 5 pm a card pops up in the bottom-right corner: **Done**, **Snooze 10 min**, or **Open board**. It doesn't take keyboard focus, so it won't interrupt your typing.
 3. **“Hey Jarvis, note down that the demo needs subtitles”** adds to Ideas; **“Hey Jarvis, show my reminders”** opens the board; **“Hey Jarvis, mark renew passport as done”** ticks it off.
-4. In the window you can also type a note in a column's box (Enter adds it), tick notes off, double-click to edit, and right-click to move, snooze or delete.
+4. In the window you can also type a note in a column's box (Enter adds it), tick notes off, drag a note to reorder it or onto another list, double-click to edit, and right-click to move, snooze or delete.
 
 Full grammar and time phrases: [specs/idea-board.md](specs/idea-board.md).
 

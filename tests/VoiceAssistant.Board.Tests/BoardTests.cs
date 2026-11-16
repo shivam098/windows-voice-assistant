@@ -326,4 +326,68 @@ public class BoardTests
         store.Remove(item.Id);
         Assert.Equal(3, count);
     }
+
+    // ---- dragging (positions) ----
+
+    private static string[] Shown(BoardStore store, BoardList list) =>
+        BoardStore.Arrange(store.Items.Where(i => i.List == list && !i.Done), list).Select(i => i.Text).ToArray();
+
+    [Fact]
+    public void New_notes_go_on_top()
+    {
+        var store = new BoardStore(null, () => Now);
+        store.Add(BoardList.Ideas, "one");
+        store.Add(BoardList.Ideas, "two");
+        Assert.Equal(["Two", "One"], Shown(store, BoardList.Ideas));
+    }
+
+    [Fact]
+    public void Dragging_within_a_list_reorders_it_and_survives_a_reload()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"board-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = new BoardStore(path, () => Now);
+            var a = store.Add(BoardList.Todo, "a");
+            store.Add(BoardList.Todo, "b");
+            store.Add(BoardList.Todo, "c");
+            store.Place(a.Id, BoardList.Todo, 0);
+            Assert.Equal(["A", "C", "B"], Shown(store, BoardList.Todo));
+            store.Add(BoardList.Todo, "d");
+            Assert.Equal(["D", "A", "C", "B"], Shown(new BoardStore(path, () => Now), BoardList.Todo));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void Dragging_to_another_list_puts_it_where_it_was_dropped()
+    {
+        var store = new BoardStore(null, () => Now);
+        var idea = store.Add(BoardList.Ideas, "idea");
+        store.Add(BoardList.Brainstorm, "x");
+        store.Add(BoardList.Brainstorm, "y");
+        store.Place(idea.Id, BoardList.Brainstorm, 1);
+        Assert.Empty(Shown(store, BoardList.Ideas));
+        Assert.Equal(["Y", "Idea", "X"], Shown(store, BoardList.Brainstorm));
+        store.Place(idea.Id, BoardList.Todo, 99);
+        Assert.Equal(["Idea"], Shown(store, BoardList.Todo));
+    }
+
+    [Fact]
+    public void Reminders_stay_in_time_order_and_a_done_note_keeps_its_tick()
+    {
+        var store = new BoardStore(null, () => Now);
+        store.Add(BoardList.Reminders, "later", Now.AddHours(2));
+        var soon = store.Add(BoardList.Reminders, "soon", Now.AddHours(1));
+        store.Place(soon.Id, BoardList.Reminders, 1);
+        Assert.Equal(["Soon", "Later"], Shown(store, BoardList.Reminders));
+
+        var done = store.Add(BoardList.Ideas, "done one");
+        store.SetDone(done.Id, true);
+        store.Place(done.Id, BoardList.Todo, 0);
+        Assert.True(store.Items.Single(i => i.Id == done.Id) is { Done: true, List: BoardList.Todo });
+    }
 }

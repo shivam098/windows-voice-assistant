@@ -43,6 +43,14 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        if (e.Args.Length >= 2 && e.Args[0] == "--drag-lab")
+        {
+            Log.Initialize();
+            _ = DragLab.RunAsync(e.Args[1], Dispatcher)
+                .ContinueWith(_ => Dispatcher.BeginInvoke(() => Shutdown()), TaskScheduler.Default);
+            return;
+        }
+
         var background = e.Args.Contains(StartupRegistration.BackgroundArgument);
         var restarted = e.Args.Contains(RestartedArgument);
         _singleInstance = new Mutex(false, @"Local\VoiceAssistant.SingleInstance");

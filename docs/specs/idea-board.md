@@ -134,7 +134,11 @@ The **Idea board** page shows one column per list:
 
 - An “Add a note…” box on each column (Enter adds; the Reminders box understands the same times as voice).
 - Each note: a done checkbox, its text, its due time (red when overdue). Double-click to edit; right-click to edit,
-  move to another list, snooze (reminders) or delete.
+  move to another list, move up / down, snooze (reminders) or delete.
+- **Drag a note** to reorder it, or onto another column to move it there (a line shows where it will land; dropping on
+  a column's title or add box puts it at the top). The column scrolls when you drag near its edge. New notes go on
+  top. Reminders always stay in time order, so dragging onto Reminders only changes the list. The order is saved
+  (`Order` on each note; older files without it keep newest first).
 - “Show done” (on by default) also lists ticked-off notes, below the open ones; turn it off to hide them.
 - “Show my reminders” (and the other lists) opens the window and briefly outlines that column.
 
