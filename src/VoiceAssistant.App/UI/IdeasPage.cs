@@ -62,8 +62,9 @@ internal sealed class IdeasPage : UserControl
         root.Children.Add(grid);
         Content = root;
         AllowDrop = true;
-        DragOver += OnDragOver;
-        Drop += OnDrop;
+        // Tunnelling, so a column's "Add a note…" box (which refuses card drags) can't swallow them.
+        PreviewDragOver += OnDragOver;
+        PreviewDrop += OnDrop;
         Background = Theme.Background;
         _board.Changed += () => Dispatcher.BeginInvoke(Refresh);
         Refresh();
@@ -372,6 +373,7 @@ internal sealed class IdeasPage : UserControl
             layer!.Add(_ghost);
         }
 
+        card.BeginAnimation(OpacityProperty, null); // a held fade-in would override the dimming
         card.Opacity = 0.35;
         try
         {
@@ -392,12 +394,19 @@ internal sealed class IdeasPage : UserControl
 
     private void OnDragOver(object sender, System.Windows.DragEventArgs e)
     {
-        e.Handled = true;
         if (!e.Data.GetDataPresent(DragFormat))
         {
-            e.Effects = System.Windows.DragDropEffects.None;
+            // Text from another app can still be dropped into an "Add a note…" box; anywhere else it can't land.
+            if (!IsInside<System.Windows.Controls.TextBox>(e.OriginalSource))
+            {
+                e.Effects = System.Windows.DragDropEffects.None;
+                e.Handled = true;
+            }
+
             return;
         }
+
+        e.Handled = true;
 
         _ghost?.MoveTo(e.GetPosition(this));
         if (DropTarget(e) is not { } target)
@@ -413,6 +422,11 @@ internal sealed class IdeasPage : UserControl
 
     private void OnDrop(object sender, System.Windows.DragEventArgs e)
     {
+        if (!e.Data.GetDataPresent(DragFormat))
+        {
+            return;
+        }
+
         e.Handled = true;
         var target = DropTarget(e);
         HideDropTarget();
@@ -438,6 +452,29 @@ internal sealed class IdeasPage : UserControl
 
             var dragged = e.Data.GetData(DragFormat) as string;
             var y = e.GetPosition(notes).Y;
+            if (notes.Parent is ScrollViewer scroll)
+            {
+                // Measured against what's visible: over the title or the add box means the top of the list (scrolled to),
+                // below the visible notes means after the last one you can see.
+                var inView = e.GetPosition(scroll).Y;
+                if (inView < 24 && scroll.VerticalOffset > 0)
+                {
+                    scroll.ScrollToVerticalOffset(Math.Max(0, scroll.VerticalOffset - 16));
+                }
+                else if (inView > scroll.ViewportHeight - 24 && inView <= scroll.ViewportHeight)
+                {
+                    scroll.ScrollToVerticalOffset(scroll.VerticalOffset + 16);
+                }
+
+                if (inView < 0)
+                {
+                    y = double.NegativeInfinity;
+                }
+                else if (inView > scroll.ViewportHeight)
+                {
+                    y = Math.Min(y, scroll.VerticalOffset + scroll.ViewportHeight);
+                }
+            }
             var index = 0;
             var child = 0;
             for (var c = 0; c < notes.Children.Count; c++)
