@@ -477,8 +477,17 @@ internal sealed class IdeasPage : UserControl
             }
             var index = 0;
             var child = 0;
+            // The drop line pushes the notes below it down. Measure against where they'd be without it, or the target
+            // would move as soon as the line is drawn (a note dragged below the last one landed one place too high).
+            var shift = 0.0;
             for (var c = 0; c < notes.Children.Count; c++)
             {
+                if (notes.Children[c] == _dropLine)
+                {
+                    shift = _dropLine.ActualHeight + _dropLine.Margin.Top + _dropLine.Margin.Bottom;
+                    continue;
+                }
+
                 if (notes.Children[c] is not Border { Tag: BoardItem item } card || item.Done)
                 {
                     if (notes.Children[c] is Border { Tag: BoardItem { Done: true } })
@@ -495,7 +504,7 @@ internal sealed class IdeasPage : UserControl
                     continue;
                 }
 
-                var mid = card.TranslatePoint(new System.Windows.Point(0, card.ActualHeight / 2), notes).Y;
+                var mid = card.TranslatePoint(new System.Windows.Point(0, card.ActualHeight / 2), notes).Y - shift;
                 if (y < mid)
                 {
                     child = c;
