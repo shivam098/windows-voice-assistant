@@ -110,3 +110,29 @@ match: `ask_user("Which one?", [titles])`.
    WhatsApp Web) run only while the user is idle.
 3. **v2:** multi-window, follow-ups ("no, the second one"), and remembering the last target ("play it", "pause").
 4. Bring the same brain to ThumbFree's planned desktop apps.
+
+## Spike results (18 Nov 2026, Snapdragon X Elite laptop, Foundry Local 1.2.4)
+
+20 realistic requests with screen summaries (`tools/BrainSpike`), checked automatically. "Clean" means correct with no
+needless steps. Times are the median per request, from the request to the full plan.
+
+| Model (Foundry Local) | Runs on | Download | Correct | Clean | Median time |
+|---|---|---|---|---|---|
+| Qwen3 4B | GPU | 2.9 GB | **14/20** | **11/20** | 11.9 s |
+| Qwen3 4B | CPU | 2.8 GB | worse (stopped early) | | 11–15 s |
+| Qwen3.5 2B text | GPU | 1.4 GB | 8–10/20 | 8/20 | 6.4 s |
+| Qwen2.5 7B | NPU | 7.0 GB | 7/20 (often right but broken JSON) | 6/20 | 5.5 s |
+| Qwen2.5 1.5B | NPU | 1.1 GB | 2/20 | 2/20 | 1.6 s |
+| Gemma 4 E2B | CPU | 6.0 GB | could not load: runtime too old (`per_layer_inputs`) | | |
+| Phi Silica | NPU | built in | not tried: needs a Limited Access token; retired Jan 2027 | | |
+
+Findings:
+- **JSON constraint:** Foundry Local's C# SDK sends a typed JSON schema that the runtime ignores. Passing the schema
+  through a Lark grammar (`start: %json {...}`) enforces it on CPU and GPU. The NPU (QNN) path ignores grammars
+  entirely, so NPU output can be malformed.
+- **Speed is the blocker.** No local model on this PC today is both good enough (at least 18/20) and fast enough
+  (under 2–3 s). The NPU is fast but its models are weaker and unconstrained; the GPU/CPU 4B models are smarter but
+  take about 12 s.
+- **Next on-device candidates:** Aion Instruct (Windows' NPU model replacing Phi Silica: no token, preview package
+  and an unpackaged WPF sample at aka.ms/tryaion, Insider rollout Dec 2026) and Gemma 4 E2B/E4B once Foundry Local's
+  runtime supports them. Until then, the hybrid design's cloud path is what makes Jarvis feel smart.
