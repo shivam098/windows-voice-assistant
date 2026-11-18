@@ -36,6 +36,11 @@ internal sealed class AssistantHost : IDisposable
     private readonly PhraseMemory? _memory;
     private readonly SoundFeedback _sounds;
     private readonly DictationFormatter _formatter;
+    private readonly Brain.LlamaBrain? _brain;
+    private CancellationTokenSource? _brainDownload;
+    private (long Received, long Total) _brainProgress;
+    private long _brainProgressPosted;
+    private string? _brainError;
     private WhisperRecognizer? _recognizer;
 
     // Standby hears everything near the microphone (meetings, videos, people talking). Transcribing all of it in full
@@ -135,6 +140,15 @@ internal sealed class AssistantHost : IDisposable
         _controller.Highlight += rect => Post(() => Highlight?.Invoke(rect));
         _controller.Board = board;
         _controller.ShowBoardRequested += list => Post(() => ShowBoardRequested?.Invoke(list));
+        if (settings.BrainEnabled)
+        {
+            _brain = new Brain.LlamaBrain(
+                new Brain.BrainFiles(settings.BrainFolder, settings.BrainServerPath, settings.BrainModelPath),
+                TimeSpan.FromMinutes(Math.Max(0, settings.BrainKeepLoadedMinutes)));
+            _brain.AvailabilityChanged += () => Post(() => BrainChanged?.Invoke());
+            _controller.Brain = _brain;
+        }
+
         if (persistMemory && _memory is not null)
         {
             _controller.MemoryChanged += () => LearnedStore.Save(_memory);
@@ -217,6 +231,96 @@ internal sealed class AssistantHost : IDisposable
 
     /// <summary>“Show my ideas” and similar: open the window on the idea board (raised on the UI thread).</summary>
     public event Action<VoiceAssistant.Board.BoardList?>? ShowBoardRequested;
+
+    /// <summary>The AI brain loaded, unloaded, failed, or its download moved on (raised on the UI thread).</summary>
+    public event Action? BrainChanged;
+
+    /// <summary>The AI brain, or null when it is switched off in Settings.</summary>
+    public Brain.LlamaBrain? AiBrain => _brain;
+
+    /// <summary>Bytes so far and in all while the AI brain downloads; null otherwise.</summary>
+    public (long Received, long Total)? BrainDownloadProgress => Volatile.Read(ref _brainDownload) is null ? null : _brainProgress;
+
+    /// <summary>Why the last download of the AI brain failed (null after a success or a new start).</summary>
+    public string? BrainError => _brainError;
+
+    /// <summary>Downloads the AI brain's files in the background (resuming a partial download), then loads it.</summary>
+    public void StartBrainDownload()
+    {
+        if (_brain is not { } brain)
+        {
+            return;
+        }
+
+        var cancel = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
+        if (Interlocked.CompareExchange(ref _brainDownload, cancel, null) is not null)
+        {
+            cancel.Dispose();
+            return;
+        }
+
+        _brainError = null;
+        _brainProgress = (0, brain.Files.MissingBytes);
+        Post(() => BrainChanged?.Invoke());
+        _ = Task.Run(async () =>
+        {
+            Log.Info($"brain: downloading {brain.Files.MissingBytes / (1 << 20)} MB");
+            try
+            {
+                await brain.Files.DownloadAsync((received, total) =>
+                {
+                    _brainProgress = (received, total);
+                    if (received - Interlocked.Read(ref _brainProgressPosted) >= 8 << 20 || received == total)
+                    {
+                        Interlocked.Exchange(ref _brainProgressPosted, received);
+                        Post(() => BrainChanged?.Invoke());
+                    }
+                }, cancel.Token).ConfigureAwait(false);
+                Log.Info("brain: downloaded and verified");
+                brain.Refresh();
+                brain.WarmUp();
+                Report(StatusKind.Success, "The AI brain is ready. Ask for anything, like “open the MrBeast video on YouTube”.");
+            }
+            catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+            {
+                Log.Info("brain: download paused");
+            }
+            catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidDataException or UnauthorizedAccessException)
+            {
+                Log.Error($"brain: download failed: {ex.GetType().Name}");
+                _brainError = ex is InvalidDataException ? "The download was damaged and was deleted. Try again." : "The download stopped. Check the internet connection and try again (it carries on where it stopped).";
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _brainDownload, null);
+                Interlocked.Exchange(ref _brainProgressPosted, 0);
+                cancel.Dispose();
+                Post(() => BrainChanged?.Invoke());
+            }
+        });
+    }
+
+    /// <summary>Stops a download of the AI brain; the next one carries on where it stopped.</summary>
+    public void CancelBrainDownload()
+    {
+        try
+        {
+            Volatile.Read(ref _brainDownload)?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    /// <summary>Esc while the AI brain plans or acts: stops it. Listening carries on.</summary>
+    public void CancelBrainAction()
+    {
+        if (_controller.IsBrainRunning)
+        {
+            Log.Info("brain: stopped with Esc");
+            Interlocked.Exchange(ref _actionCts, new CancellationTokenSource()).Cancel();
+        }
+    }
 
     /// <summary>True when dictation uses the Hindi + English model.</summary>
     public bool HinglishDictation => _hinglishDictation;
@@ -665,6 +769,7 @@ internal sealed class AssistantHost : IDisposable
 
         drained &= hinglishLoad?.Wait(TimeSpan.FromSeconds(5)) ?? true;
         drained &= hinglishAccurateLoad?.Wait(TimeSpan.FromSeconds(5)) ?? true;
+        _brain?.Dispose();
         StopMicrophone();
         _microphone.Dispose();
         _sounds.Dispose();
@@ -864,6 +969,12 @@ internal sealed class AssistantHost : IDisposable
         if (_hinglishDictation)
         {
             EnsureHinglishLoading();
+        }
+
+        if (_brain is { Availability: VoiceAssistant.Core.BrainAvailability.Sleeping })
+        {
+            // Loads in the background (about 10 s) so the first request is quick.
+            _brain.WarmUp();
         }
 
         if (_settings.ListenOnStartup)

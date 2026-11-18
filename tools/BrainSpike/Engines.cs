@@ -23,21 +23,9 @@ internal static class Engines
     }
 
     /// <summary>
-    /// The plan schema as a llama.cpp grammar with no whitespace and a fixed key order. llama.cpp's JSON-schema grammar
-    /// allows indentation, and Gemma 4 E4B uses it, which triples its output tokens and time.
-    /// </summary>
-    public const string CompactGrammar = """
-root ::= "{\"steps\":[" (step ("," step){0,5})? "],\"say\":" str "}"
-step ::= "{\"tool\":\"" tool "\",\"target\":" str ",\"text\":" str "}"
-tool ::= "focus_window" | "open_app" | "open_url" | "web_search" | "click" | "type_text" | "press" | "scroll" | "ask"
-str ::= "\"" char{0,100} "\""
-char ::= [^"\\\x7F\x00-\x1F] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4})
-""";
-
-    /// <summary>
-    /// llama.cpp's llama-server (OpenAI-compatible). The plan shape is enforced by its grammar sampler (the compact
-    /// grammar, or the JSON schema when <paramref name="schema"/> is set), and the shared prefix (instructions and
-    /// examples) stays in its prompt cache between requests. Prints prompt vs generation time.
+    /// llama.cpp's llama-server (OpenAI-compatible). The plan shape is enforced by its grammar sampler (the app's
+    /// compact grammar, BrainPrompt.Grammar, or the JSON schema when <paramref name="schema"/> is set), and the shared
+    /// prefix (instructions and examples) stays in its prompt cache between requests. Prints prompt vs generation time.
     /// </summary>
     public static Func<List<(string Role, string Content)>, Task<string>> LlamaServer(string url, bool thinking = true, bool schema = false)
     {
@@ -57,7 +45,7 @@ char ::= [^"\\\x7F\x00-\x1F] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4})
             if (schema)
                 body["response_format"] = new JsonObject { ["type"] = "json_schema", ["json_schema"] = new JsonObject { ["name"] = "plan", ["schema"] = jsonSchema!.DeepClone() } };
             else
-                body["grammar"] = CompactGrammar.Replace("\r", "");
+                body["grammar"] = VoiceAssistant.Core.BrainPrompt.Grammar.Replace("\r", "");
             var resp = await http.PostAsJsonAsync("/v1/chat/completions", body);
             var json = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
             if (!resp.IsSuccessStatusCode) return "ERROR " + json.ToJsonString();

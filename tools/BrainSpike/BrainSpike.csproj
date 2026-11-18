@@ -10,6 +10,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AI.Foundry.Local.WinML" Version="1.2.4" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.15" />
+    <ProjectReference Include="..\..\src\VoiceAssistant.Core\VoiceAssistant.Core.csproj" />
   </ItemGroup>
 </Project>
 

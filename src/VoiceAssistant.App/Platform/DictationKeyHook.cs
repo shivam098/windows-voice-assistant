@@ -40,6 +40,9 @@ internal sealed class DictationKeyHook : IDisposable
     /// <summary>Esc while recording, or the Ctrl+Win that started it was part of a Windows shortcut: discard the recording.</summary>
     public event Action? CancelPressed;
 
+    /// <summary>Esc pressed while not recording (it still reaches the app in front): stops the AI brain if it is acting.</summary>
+    public event Action? EscapePressed;
+
     public bool IsInstalled => _hook != 0;
 
     /// <summary>
@@ -101,6 +104,7 @@ internal sealed class DictationKeyHook : IDisposable
             win = key == DictationKey.Win ? down : IsDown(VK_LWIN) || IsDown(VK_RWIN);
         }
 
+        var wasRecording = _keys.IsRecording;
         var result = _keys.Process(key, down, ctrl, win);
         if (result.SuppressStartMenu)
         {
@@ -115,6 +119,11 @@ internal sealed class DictationKeyHook : IDisposable
             DictationKeyCommand.Cancel => CancelPressed,
             _ => null,
         });
+
+        if (key == DictationKey.Escape && down && !wasRecording)
+        {
+            Raise(EscapePressed);
+        }
 
         return result.Swallow ? 1 : CallNextHookEx(_hook, code, wParam, lParam);
     }

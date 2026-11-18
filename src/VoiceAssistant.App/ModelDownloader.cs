@@ -24,36 +24,44 @@ internal static class ModelDownloader
 
     public static bool CanDownload(string file) => Known.ContainsKey(file);
 
+    private static readonly TimeSpan StallTimeout = TimeSpan.FromSeconds(60);
+
     /// <summary>Downloads <paramref name="file"/> into <paramref name="directory"/>; reports whole-percent progress.</summary>
     public static async Task DownloadAsync(string file, string directory, Action<int> progress, CancellationToken cancellationToken)
     {
         var (url, expected) = Known[file];
         Directory.CreateDirectory(directory);
-        var target = Path.Combine(directory, file);
-        var partial = target + ".partial";
-
-        using (var http = new HttpClient { Timeout = TimeSpan.FromMinutes(30) })
-        using (var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false))
+        var lastPercent = -1;
+        await DownloadVerifiedAsync(url, expected, Path.Combine(directory, file), (received, total) =>
         {
-            response.EnsureSuccessStatusCode();
-            var total = response.Content.Headers.ContentLength ?? 0;
-            await using var source = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            await using var destination = File.Create(partial);
-            var buffer = new byte[1 << 16];
-            long received = 0;
-            var lastPercent = -1;
-            int read;
-            while ((read = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+            var percent = total > 0 ? (int)(received * 100 / total) : 0;
+            if (percent != lastPercent)
             {
-                await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
-                received += read;
-                var percent = total > 0 ? (int)(received * 100 / total) : 0;
-                if (percent != lastPercent)
-                {
-                    lastPercent = percent;
-                    progress(percent);
-                }
+                lastPercent = percent;
+                progress(percent);
             }
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Downloads <paramref name="url"/> to <paramref name="target"/> through “target.partial”, resuming a partial file
+    /// left by an interrupted download, and moves it into place only if its SHA-256 matches (otherwise it is deleted).
+    /// Progress is (bytes so far, total bytes).
+    /// </summary>
+    public static async Task DownloadVerifiedAsync(string url, string sha256, string target, Action<long, long> progress, CancellationToken cancellationToken)
+    {
+        var partial = target + ".partial";
+        var have = File.Exists(partial) ? new FileInfo(partial).Length : 0;
+
+        // Big files take many minutes on a slow connection: no overall timeout, but a minute without any data gives up
+        // (the next attempt resumes).
+        try
+        {
+            await ReceiveAsync(url, partial, have, progress, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new IOException("The download stopped receiving data.");
         }
 
         string actual;
@@ -62,12 +70,58 @@ internal static class ModelDownloader
             actual = Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false)).ToLowerInvariant();
         }
 
-        if (actual != expected)
+        if (actual != sha256)
         {
             File.Delete(partial);
-            throw new InvalidDataException($"Downloaded {file} failed verification and was deleted.");
+            throw new InvalidDataException($"Downloaded {Path.GetFileName(target)} failed verification and was deleted.");
         }
 
         File.Move(partial, target, overwrite: true);
+    }
+
+    private static async Task ReceiveAsync(string url, string partial, long have, Action<long, long> progress, CancellationToken cancellationToken)
+    {
+        using var stall = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        if (have > 0)
+        {
+            request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(have, null);
+        }
+
+        stall.CancelAfter(StallTimeout);
+        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, stall.Token).ConfigureAwait(false);
+        if (response.StatusCode == System.Net.HttpStatusCode.RequestedRangeNotSatisfiable && have > 0)
+        {
+            // The partial file is already complete: it is verified next.
+            progress(have, have);
+            return;
+        }
+
+        response.EnsureSuccessStatusCode();
+        if (have > 0 && response.StatusCode != System.Net.HttpStatusCode.PartialContent)
+        {
+            // The server ignored the range: start over.
+            have = 0;
+        }
+
+        var total = have + (response.Content.Headers.ContentLength ?? 0);
+        await using var source = await response.Content.ReadAsStreamAsync(stall.Token).ConfigureAwait(false);
+        await using var destination = new FileStream(partial, have > 0 ? FileMode.Append : FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16);
+        var buffer = new byte[1 << 16];
+        var received = have;
+        var lastReport = 0L;
+        int read;
+        while ((read = await source.ReadAsync(buffer, stall.Token).ConfigureAwait(false)) > 0)
+        {
+            stall.CancelAfter(StallTimeout);
+            await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+            received += read;
+            if (received - lastReport >= 1 << 20 || received == total)
+            {
+                lastReport = received;
+                progress(received, total);
+            }
+        }
     }
 }

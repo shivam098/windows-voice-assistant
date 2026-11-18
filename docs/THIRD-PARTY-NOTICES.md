@@ -10,6 +10,16 @@ Voice Assistant downloads and runs these models and libraries. Each keeps its ow
 | [Oriserve/Whisper-Hindi2Hinglish-Swift](https://huggingface.co/Oriserve/Whisper-Hindi2Hinglish-Swift), fine-tuned from [openai/whisper-base](https://huggingface.co/openai/whisper-base) | Hindi + English dictation | Apache-2.0 (fine-tune); MIT (OpenAI Whisper base model, mel filters, vocabulary) |
 | [Oriserve/Whisper-Hindi2Hinglish-Apex](https://huggingface.co/Oriserve/Whisper-Hindi2Hinglish-Apex), fine-tuned from [openai/whisper-large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo) | Hindi + English dictation, accurate option | Apache-2.0 (fine-tune); MIT (OpenAI Whisper base model, mel filters, vocabulary) |
 | [NAudio](https://github.com/naudio/NAudio) | Microphone capture | MIT |
+| [llama.cpp](https://github.com/ggml-org/llama.cpp) `llama-server`, release b12483 (Windows ARM64 OpenCL-Adreno build, or x64 Vulkan build) | Runs the AI brain's model on this PC (downloaded when you choose to, from Settings) | MIT |
+| [Qwen/Qwen3-4B-Instruct-2507](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507), Q4_0 GGUF from [unsloth/Qwen3-4B-Instruct-2507-GGUF](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | The AI brain: plans requests the fixed commands don't cover | Apache-2.0 |
+
+## llama.cpp and Qwen3 4B Instruct 2507 (the AI brain)
+
+Neither is bundled with the app: Settings › AI brain downloads them on request from their official releases (the
+llama.cpp GitHub release and the Hugging Face repositories above), checks each file's SHA-256, and runs them unchanged on
+this PC. llama.cpp is Copyright (c) 2023-2026 The ggml authors, MIT License. Qwen3-4B-Instruct-2507 is by the Qwen team
+(Alibaba Cloud), Apache License 2.0 (<https://www.apache.org/licenses/LICENSE-2.0>); the GGUF file is unsloth's 4-bit
+(Q4_0) conversion of it, under the same license. Both are provided "AS IS", without warranties or conditions of any kind.
 
 ## Oriserve/Whisper-Hindi2Hinglish-Swift
 

@@ -179,11 +179,23 @@ public sealed partial class InteractionController
             return;
         }
 
-        if (_confirm is not null && !(parsed.Commands.Count == 1 && parsed.Commands[0].Kind == CommandKind.Confirm))
+        var answer = parsed.Commands.Count == 1 ? parsed.Commands[0].Kind : (CommandKind?)null;
+        if (_confirm is not null && answer is not (CommandKind.Confirm or CommandKind.Cancel))
         {
-            // A destructive click waits only for the very next utterance to be "yes"; anything else drops it.
+            // A destructive click waits only for the very next utterance to be "yes" (or "no"); anything else drops it.
             _confirm = null;
         }
+
+        if (_brainPending is not null && answer is not (CommandKind.Confirm or CommandKind.Cancel))
+        {
+            _brainPending = null;
+            Trace?.Invoke("brain: waiting step dropped");
+        }
+
+        // The AI brain acts only on speech addressed to Jarvis: said with the wake word, right after "Hey Jarvis" on its
+        // own, or when commands need no wake word. Conversation in the 30 s after a command is never planned and acted on.
+        var addressed = parsed.WokeUp || _brainAddressed || !_options.WakeWordEnabled;
+        _brainAddressed = false;
 
         if (parsed.IsEmpty)
         {
@@ -210,6 +222,7 @@ public sealed partial class InteractionController
             if (Mode != InteractionMode.Dictation)
             {
                 Awake();
+                _brainAddressed = true;
                 Trace?.Invoke("wake");
                 Report(StatusKind.Info, "Yes? Say a command.", heard);
             }
@@ -224,9 +237,41 @@ public sealed partial class InteractionController
                 Awake();
             }
 
+            if (BrainTakes && addressed)
+            {
+                if (confidence < _options.MinCommandConfidence)
+                {
+                    // Unclear speech is never planned and acted on.
+                    Trace?.Invoke("low confidence request ignored");
+                    Report(StatusKind.Warning, "Not sure I heard that right — ignored.", heard);
+                    return;
+                }
+
+                // Not a fixed command: the AI brain plans it from what's on screen.
+                if (await AskBrainAsync(parsed.Spoken ?? parsed.Unrecognized, heard, cancellationToken).ConfigureAwait(false) is null)
+                {
+                    // No plan: a rephrasing that works can still be learned.
+                    _unrecognized = (parsed.Unrecognized, _options.Clock());
+                }
+
+                if (Mode == InteractionMode.Command)
+                {
+                    _awakeSince = _options.Clock();
+                }
+
+                return;
+            }
+
             _unrecognized = (parsed.Unrecognized, _options.Clock());
             Trace?.Invoke("unrecognized command");
-            Report(StatusKind.Warning, "Not a command I know. Say it another way and I'll remember.", heard);
+            Report(
+                StatusKind.Warning,
+                Brain?.Availability == BrainAvailability.NotInstalled
+                    ? "Not a command I know. Say it another way, or get the AI brain in Settings to ask for anything."
+                    : BrainTakes
+                        ? $"Not a command I know. Start with “{_options.WakeWordLabel}” to ask the AI brain, or say it another way."
+                        : "Not a command I know. Say it another way and I'll remember.",
+                heard);
             return;
         }
 
@@ -248,22 +293,32 @@ public sealed partial class InteractionController
         }
 
         var allSucceeded = true;
-        foreach (var command in parsed.Commands)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (command.Kind is not (CommandKind.Choose or CommandKind.Confirm or CommandKind.Cancel or CommandKind.HideNumbers))
-            {
-                // Any other command makes numbered choices and pending confirmations stale.
-                ClearPending();
-            }
 
-            var ok = await ExecuteAsync(command, heard, cancellationToken).ConfigureAwait(false);
-            Trace?.Invoke($"command {command.Kind} {(ok ? "ok" : "failed")}{(parsed.FromLearnedPhrase ? " (learned phrase)" : string.Empty)}");
-            if (!ok)
+        // A single command that finds nothing ("open the MrBeast video on YouTube" read as an app name) goes to the brain.
+        _brainRequest = parsed.Commands.Count == 1 && addressed ? parsed.Spoken : null;
+        try
+        {
+            foreach (var command in parsed.Commands)
             {
-                allSucceeded = false;
-                break;
+                cancellationToken.ThrowIfCancellationRequested();
+                if (command.Kind is not (CommandKind.Choose or CommandKind.Confirm or CommandKind.Cancel or CommandKind.HideNumbers))
+                {
+                    // Any other command makes numbered choices and pending confirmations stale.
+                    ClearPending();
+                }
+
+                var ok = await ExecuteAsync(command, heard, cancellationToken).ConfigureAwait(false);
+                Trace?.Invoke($"command {command.Kind} {(ok ? "ok" : "failed")}{(parsed.FromLearnedPhrase ? " (learned phrase)" : string.Empty)}");
+                if (!ok)
+                {
+                    allSucceeded = false;
+                    break;
+                }
             }
+        }
+        finally
+        {
+            _brainRequest = null;
         }
 
         LearnRephrasing(parsed, allSucceeded, heard);
@@ -473,7 +528,7 @@ public sealed partial class InteractionController
                 return await ConfirmAsync(heard, ct).ConfigureAwait(false);
 
             case CommandKind.Cancel:
-                var hadPending = _choices.Count > 0 || _confirm is not null;
+                var hadPending = _choices.Count > 0 || _confirm is not null || _brainPending is not null;
                 ClearPending();
                 Report(StatusKind.Info, hadPending ? "Cancelled." : "Nothing to cancel.", heard);
                 return hadPending;

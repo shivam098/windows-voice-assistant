@@ -47,5 +47,13 @@ internal static class HelpText
             "“Show numbers” → say a number · “Hide numbers”",
             "Delete / merge / sign out / pay → say “yes” to confirm",
         ]),
+        ("Ask for anything: the AI brain (Settings › AI brain › Download, runs on this PC)", [
+            "“Open the MrBeast video on YouTube” → switches to that window and clicks the video",
+            "“Mute the video” · “Play the second video” · “Maximize this window”",
+            "“What's the weather in Bangalore?” · “Find a pasta recipe on YouTube” → opens the results",
+            "“Reply thanks to Rahul on WhatsApp” → types it, then asks “Send it?” → say “yes”",
+            "“How are you?” · “Tell me a joke” → answered on the pill",
+            "Start each request with “Hey Jarvis” · it asks for “yes” before sending, deleting or closing anything · Esc stops it",
+        ]),
     ];
 }

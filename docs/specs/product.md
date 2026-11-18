@@ -3,12 +3,13 @@
 ## Purpose
 
 Let people use their computer by voice: **dictate text into any app**, and **control apps** (open, switch, click,
-type, send) hands-free. Everything runs on the device.
+type, send) hands-free, with fixed commands and, for anything else, an AI model that plans the steps. Everything runs
+on the device.
 
 ## Principles (all platforms must hold these)
 
-1. **On-device.** Audio, transcripts and screen contents never leave the device. Optional downloads are models only,
-   verified by SHA-256 before use.
+1. **On-device.** Audio, transcripts and screen contents never leave the device. Optional downloads are models and the
+   AI brain's runtime (llama.cpp), verified by SHA-256 before use.
 2. **Never act on the wrong thing.** Before typing, sending or clicking, verify the target is still the one the user
    chose. If not, do nothing and say why. It is better to refuse than to type into the wrong window.
 3. **Commands are whole utterances.** A sentence that contains a command word (“please send me the logs”) is text, never

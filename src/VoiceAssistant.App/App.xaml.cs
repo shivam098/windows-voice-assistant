@@ -216,6 +216,7 @@ public partial class App : System.Windows.Application
                 End(cancel: true);
             }
         };
+        _keyHook.EscapePressed += () => _host?.CancelBrainAction();
     }
 
     private GlobalHotkey? TryRegister(string chord, Action action, string purpose)

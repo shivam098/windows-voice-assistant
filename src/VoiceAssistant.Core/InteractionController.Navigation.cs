@@ -37,8 +37,14 @@ public sealed partial class InteractionController
     /// <summary>“go to X” / “open X”: a tab, an app, or (last) something in the front window called X.</summary>
     private async Task<bool> NavigateAsync(string spokenName, bool newWindow, string heard, CancellationToken ct)
     {
+        // "Open the MrBeast video on YouTube" names a tab only in passing: with the AI brain on, such descriptions need a
+        // strong tab match, otherwise the brain gets the whole request (it can switch to the tab and click the video).
+        var tabMinimum = BrainTakes && _brainRequest is not null && TranscriptText.Normalize(spokenName).Split(' ', StringSplitOptions.RemoveEmptyEntries).Length >= 3
+            ? NameMatcher.Words
+            : NameMatcher.Words - 10;
+
         // "Go to YouTube" means the YouTube tab if one is open, unless an app is called exactly that.
-        if (!newWindow && !_apps.HasExactName(spokenName) && await TrySelectNamedTabAsync(spokenName, heard, ct).ConfigureAwait(false) is { } tabResult)
+        if (!newWindow && !_apps.HasExactName(spokenName) && await TrySelectNamedTabAsync(spokenName, heard, ct, tabMinimum).ConfigureAwait(false) is { } tabResult)
         {
             return tabResult;
         }
@@ -48,7 +54,7 @@ public sealed partial class InteractionController
             return await OpenAsync(spokenName, newWindow, heard, ct).ConfigureAwait(false);
         }
 
-        if (newWindow && await TrySelectNamedTabAsync(spokenName, heard, ct).ConfigureAwait(false) is { } openTab)
+        if (newWindow && await TrySelectNamedTabAsync(spokenName, heard, ct, tabMinimum).ConfigureAwait(false) is { } openTab)
         {
             return openTab;
         }
@@ -64,15 +70,21 @@ public sealed partial class InteractionController
             }
         }
 
+        if (TakeBrainRequest() is { } request)
+        {
+            // "Open the MrBeast video on YouTube" isn't an app, tab or button name: the AI brain works it out.
+            return await AskBrainAsync(request, heard, ct).ConfigureAwait(false) ?? false;
+        }
+
         Report(StatusKind.Warning, $"I couldn't find an app, tab or button called “{spokenName}”.", heard);
         return false;
     }
 
     /// <summary>Null when no tab matches (so the caller tries apps); otherwise whether the tab was selected.</summary>
-    private async Task<bool?> TrySelectNamedTabAsync(string name, string heard, CancellationToken ct)
+    private async Task<bool?> TrySelectNamedTabAsync(string name, string heard, CancellationToken ct, int minScore = NameMatcher.Words - 10)
     {
         var tabs = await _desktop.ListTabsAsync(ct).ConfigureAwait(false);
-        switch (TargetResolver.ResolveTab(tabs, new ElementTarget(name)))
+        switch (TargetResolver.ResolveTab(tabs, new ElementTarget(name), minScore))
         {
             case Resolution<BrowserTab>.Single single:
                 return await ActivateTabAsync(single.Item, heard, ct).ConfigureAwait(false);
@@ -140,6 +152,33 @@ public sealed partial class InteractionController
             return false;
         }
 
+        switch (await ResolveClickableAsync(window, target, minScore, ct).ConfigureAwait(false))
+        {
+            case Resolution<UiElement>.Single single:
+                return await ActOnElementAsync(single.Item, window, heard, ct).ConfigureAwait(false);
+            case Resolution<UiElement>.Ambiguous ambiguous:
+                Offer(ambiguous.Items.Select((e, i) => new Choice(i + 1, ChoiceKind.Element, window, Element: e)).ToList(), $"Which “{target.Name}”? Say the number.", heard);
+                return false;
+            default:
+                if (quietIfMissing)
+                {
+                    return null;
+                }
+
+                if (TakeBrainRequest() is { } request)
+                {
+                    // "Click the MrBeast video" while it's in a window behind: the AI brain can switch there first.
+                    return await AskBrainAsync(request, heard, ct).ConfigureAwait(false) ?? false;
+                }
+
+                Report(StatusKind.Warning, $"I couldn't find “{Describe(target)}” here. Say “show numbers” to see what I can click.", heard);
+                return false;
+        }
+    }
+
+    /// <summary>The element named in the window; browsers are read again briefly while a just-shown page builds.</summary>
+    private async Task<Resolution<UiElement>> ResolveClickableAsync(WindowRef window, ElementTarget target, int minScore, CancellationToken ct)
+    {
         var elements = await _desktop.ListClickableAsync(window, ct).ConfigureAwait(false);
         var resolution = TargetResolver.ResolveElement(elements, target, _desktop.GetWindowRect(window), minScore);
 
@@ -160,22 +199,7 @@ public sealed partial class InteractionController
             }
         }
 
-        switch (resolution)
-        {
-            case Resolution<UiElement>.Single single:
-                return await ActOnElementAsync(single.Item, window, heard, ct).ConfigureAwait(false);
-            case Resolution<UiElement>.Ambiguous ambiguous:
-                Offer(ambiguous.Items.Select((e, i) => new Choice(i + 1, ChoiceKind.Element, window, Element: e)).ToList(), $"Which “{target.Name}”? Say the number.", heard);
-                return false;
-            default:
-                if (quietIfMissing)
-                {
-                    return null;
-                }
-
-                Report(StatusKind.Warning, $"I couldn't find “{Describe(target)}” here. Say “show numbers” to see what I can click.", heard);
-                return false;
-        }
+        return resolution;
     }
 
     private async Task<bool> ClickAsync(ElementTarget target, string heard, int minScore, CancellationToken ct) =>
@@ -220,6 +244,11 @@ public sealed partial class InteractionController
 
     private async Task<bool> ConfirmAsync(string heard, CancellationToken ct)
     {
+        if (await ResumeBrainAsync(heard, ct).ConfigureAwait(false) is { } resumed)
+        {
+            return resumed;
+        }
+
         if (_confirm is not { } pending || _options.Clock() - pending.At > PendingTimeout)
         {
             _confirm = null;
@@ -446,6 +475,7 @@ public sealed partial class InteractionController
     private void ClearPending()
     {
         _confirm = null;
+        _brainPending = null;
         if (_choices.Count > 0)
         {
             _choices.Clear();
@@ -459,6 +489,11 @@ public sealed partial class InteractionController
         if (_confirm is { } pending && now - pending.At > PendingTimeout)
         {
             _confirm = null;
+        }
+
+        if (_brainPending is { } waiting && now - waiting.At > PendingTimeout)
+        {
+            _brainPending = null;
         }
 
         if (_choices.Count > 0 && now - _choicesAt > PendingTimeout)

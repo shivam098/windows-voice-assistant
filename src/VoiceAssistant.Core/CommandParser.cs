@@ -98,6 +98,9 @@ public sealed record ParsedUtterance
     /// <summary>The simplified phrase that matched (used to learn rephrasings).</summary>
     public string? CommandText { get; init; }
 
+    /// <summary>What was said after the wake word or prefix, as transcribed (capitals and punctuation kept), for the AI brain.</summary>
+    public string? Spoken { get; init; }
+
     /// <summary>The command came from a phrase the user taught earlier.</summary>
     public bool FromLearnedPhrase { get; init; }
 
@@ -363,11 +366,11 @@ public sealed partial class CommandParser
                 {
                     // "Hey Jarvis, go to the first tab" while typing: any command works after the wake word, and
                     // typing stops first so nothing lands in the new place.
-                    return new ParsedUtterance { Commands = WithSpokenReplacement(WithUntrimmedEdit(full, normalized)!, cleaned), WokeUp = woke, CommandText = text, LeavesTyping = true };
+                    return new ParsedUtterance { Commands = WithSpokenReplacement(WithUntrimmedEdit(full, normalized)!, cleaned), WokeUp = woke, CommandText = text, LeavesTyping = true, Spoken = spoken };
                 }
 
                 return prefixed
-                    ? new ParsedUtterance { Unrecognized = text, WokeUp = woke }
+                    ? new ParsedUtterance { Unrecognized = text, WokeUp = woke, Spoken = spoken }
                     : new ParsedUtterance { DictationText = cleaned };
             }
 
@@ -395,8 +398,8 @@ public sealed partial class CommandParser
                 }
 
                 return commands is null
-                    ? new ParsedUtterance { Unrecognized = text, WokeUp = woke }
-                    : new ParsedUtterance { Commands = WithSpokenReplacement(learned ? commands : WithUntrimmedEdit(commands, normalized)!, cleaned), WokeUp = woke, CommandText = text, FromLearnedPhrase = learned };
+                    ? new ParsedUtterance { Unrecognized = text, WokeUp = woke, Spoken = spoken }
+                    : new ParsedUtterance { Commands = WithSpokenReplacement(learned ? commands : WithUntrimmedEdit(commands, normalized)!, cleaned), WokeUp = woke, CommandText = text, FromLearnedPhrase = learned, Spoken = spoken };
             }
         }
     }

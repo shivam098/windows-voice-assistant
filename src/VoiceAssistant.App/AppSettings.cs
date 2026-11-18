@@ -157,6 +157,24 @@ internal sealed class AppSettings
     public bool LearnFromUsage { get; set; } = true;
 
     /// <summary>
+    /// Requests the fixed commands don't cover (“open the MrBeast video on YouTube”) go to an AI model on this PC
+    /// (docs/design/ai-brain.md). Its files (about 2.4 GB) are downloaded only when you ask, from Settings.
+    /// </summary>
+    public bool BrainEnabled { get; set; } = true;
+
+    /// <summary>Where the AI brain's files are kept; empty means %LOCALAPPDATA%\VoiceAssistant\brain.</summary>
+    public string? BrainFolder { get; set; }
+
+    /// <summary>Advanced: an existing llama-server.exe to use instead of the downloaded one.</summary>
+    public string? BrainServerPath { get; set; }
+
+    /// <summary>Advanced: an existing GGUF model to use instead of the downloaded one (the prompt is measured with Qwen3 4B).</summary>
+    public string? BrainModelPath { get; set; }
+
+    /// <summary>The model (about 3 GB of memory) is unloaded after this many minutes unused and reloads on the next request; 0 keeps it loaded.</summary>
+    public int BrainKeepLoadedMinutes { get; set; } = 60;
+
+    /// <summary>
     /// Tap Ctrl+Win to dictate into any app, tap it again to type the text (Ctrl+Win+Space works the same; Esc cancels).
     /// The name is kept from when the keys had to be held, so existing settings files still work.
     /// </summary>
