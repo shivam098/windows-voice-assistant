@@ -33,6 +33,13 @@ its tests; navigation phrases are specified in [navigation.md](navigation.md).
 | “open *app*”, “launch *app*”, “start *app*”, “fire up *app*”, “pull up *app*” | Opens the app. Apps with a new-window key (Notepad) open a **fresh window**, never the open document |
 | “switch to *app*”, “go to *app*”, “go back to *app*”, “bring up *app*”, “show *app*” | Brings the app's window to the front (launches it if needed) |
 | “… and start typing” | Then starts typing in it |
+| “open / go to *address*” (“instagram.com”, “github.com/shivam098”, “instagram dot com”) | Opens the page in a new tab (“go to” a site's front page first switches to a tab that already shows it). An app called exactly that (Paint.NET, Battle.net) opens instead |
+| “open *site* in a new tab” (also “in another tab”, “in a second tab”, “on a new tab”, “open a new tab and open *site*”, “open a new tab with *site*”) | An address opens directly. A name (“Instagram”) goes to the AI brain, which knows the site's address; only steps that open a page run (it never switches to an app or clicks for this). Without it, or without “Hey Jarvis”, or if its plan opens no page: an app called exactly that opens (“open Notepad in a new tab”), else a web search for the name, never for something on screen (“the first link”, “this video”, “link 3”: a message instead). Never read as a tab called “instagram in new”; “the other tab” and “the second tab” are tabs already open. “Open a new Instagram tab” is a tab name: with no such tab, the brain may open the site, as above |
+| “open *app* in a new window” | A new window of the app; a site name is treated as “in a new tab” |
+
+Pages open in a new tab of the **browser in front** (Chrome in front: Chrome, whatever the default browser is), else
+the default browser. An address is one word ending in a common web domain (.com, .org, .in, .io…) or starting with
+www./http: “open report.docx” is still a file or app name. Local and numeric addresses never open by voice.
 
 App names are matched against configured apps, then Start-menu apps: exact name or alias, then without vendor
 (“Microsoft Outlook (new)” = “outlook”), then a prefix (≥ 4 letters), then 1–2 letter slips (“notpad”, “crome”).
@@ -128,7 +135,11 @@ the next phrase after “Hey Jarvis” on its own, or any phrase when the wake w
 seconds after a command is never planned and acted on (it gets “Start with ‘Hey Jarvis’ to ask the AI brain…”), and
 unclear speech (below `minCommandConfidence`) is ignored like an unclear command.
 
-1. The pill shows “Thinking…” (“Waking up the AI brain…” while the model loads).
+1. The pill shows “Thinking…” (“Waking up the AI brain…” while the model loads). Saying “Hey Jarvis” on its own
+   already starts loading a sleeping model, so the request that follows waits less. Speech while it thinks or acts is
+   ignored (“Still working on your last request. Press Esc to stop it.”) rather than run afterwards on a changed
+   screen; Esc stops it. So is speech that began before the brain started or finished (silently): a “yes” said
+   straight after a request, before the brain asked, never answers its question.
 2. The brain gets the request as said (wake word removed) and a **screen summary**: the open windows front to back
    (title, app, left/right half, maximized, minimized), and what can be clicked or typed into in up to two of them
    (the front one, then the one the request names, else the next). Busy pages are cut to 14 items per window, keeping
@@ -140,7 +151,7 @@ unclear speech (below `minCommandConfidence`) is ignored like an unclear command
 |---|---|
 | `focus_window(title)` | Brings that window to the front (restores it if minimized); else a tab of that name; else opens the app |
 | `open_app(name)` | “open *app*” (a fresh Notepad window, etc.) |
-| `open_url(address)` | Opens the page in the default browser, then waits for it to come to the front |
+| `open_url(address)` | Opens the page in a new tab of the browser in front (else the default browser), then waits for it to come to the front |
 | `web_search(site, query)` | YouTube, Bing, Wikipedia, GitHub or Google Maps results page; Google for anything else |
 | `click(name)` | Clicks that item in the front window (a strong name match; text boxes get the cursor); ties show numbers |
 | `type_text(text)` (optional box name) | Types into that box, else the focused box, else the page's main box; the box then counts as the typing target, so “send it” and “scratch that” work on it. In a browser only into the page, never the browser's own address, search or find bar |
@@ -150,7 +161,8 @@ unclear speech (below `minCommandConfidence`) is ignored like an unclear command
 
 Steps run in order; any step that fails stops the plan with the reason, and the plan's sentence shows at the end. A
 page that opens without its browser coming to the front stops the plan there (later steps would act on the wrong
-window). Questions and chat (“how are you”) are answered in the sentence with no steps.
+window). A step that only opens an empty tab (Ctrl+T, clicking “New Tab”) right before `open_url` or `web_search` is
+skipped: those open their own tab. Questions and chat (“how are you”) are answered in the sentence with no steps.
 
 **Asks first** (“Click ‘Delete’? Say ‘yes’ to go ahead, or ‘no’.”, within 30 s, same window): destructive buttons (the
 same list as clicks); buttons that send, post, repost, submit, share, install, run, allow or agree; files that start a

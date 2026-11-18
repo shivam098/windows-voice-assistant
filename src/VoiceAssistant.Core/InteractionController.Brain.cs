@@ -17,6 +17,7 @@ public sealed partial class InteractionController
     private BrainPending? _brainPending;
     private string? _brainRequest;
     private int _brainRunning;
+    private int _brainChanges;
 
     /// <summary>The last utterance was “Hey Jarvis” on its own: the next one is addressed to Jarvis.</summary>
     private bool _brainAddressed;
@@ -26,6 +27,13 @@ public sealed partial class InteractionController
 
     /// <summary>True while the brain is planning or acting, so Esc can stop it. Safe to read from any thread.</summary>
     public bool IsBrainRunning => Volatile.Read(ref _brainRunning) != 0;
+
+    /// <summary>
+    /// Changes whenever the brain starts or stops work. Read it when speech starts and pass it with the transcript, so
+    /// speech that began before the brain's last start or stop is ignored: a “yes” said before it asked never answers it.
+    /// Safe to read from any thread.
+    /// </summary>
+    public int BrainChanges => Volatile.Read(ref _brainChanges);
 
     private bool BrainTakes => Brain is { Availability: not (BrainAvailability.Off or BrainAvailability.NotInstalled) };
 
@@ -69,15 +77,23 @@ public sealed partial class InteractionController
         return request;
     }
 
+    private void SetBrainRunning(bool running)
+    {
+        Interlocked.Exchange(ref _brainRunning, running ? 1 : 0);
+        Interlocked.Increment(ref _brainChanges);
+    }
+
     /// <summary>
-    /// Plans the request and runs the plan. Null when there was no plan (the model failed or answered nonsense; already
-    /// reported), otherwise whether the plan ran to the end (or stopped to ask something).
+    /// Plans the request and runs the plan. Null when there was no plan: the model failed or answered nonsense (already
+    /// reported), or, with <paramref name="onlyPages"/>, the plan opened no page (not reported: the caller carries on).
+    /// Otherwise whether the plan ran to the end (or stopped to ask something).
     /// </summary>
-    private async Task<bool?> AskBrainAsync(string request, string heard, CancellationToken ct)
+    /// <param name="onlyPages">The request asked for a page (“open X in a new tab”): only steps that open one run.</param>
+    private async Task<bool?> AskBrainAsync(string request, string heard, CancellationToken ct, bool onlyPages = false)
     {
         var brain = Brain!;
         _brainRequest = null;
-        Interlocked.Exchange(ref _brainRunning, 1);
+        SetBrainRunning(true);
         var clock = Stopwatch.StartNew();
         try
         {
@@ -116,16 +132,37 @@ public sealed partial class InteractionController
                 return null;
             }
 
-            Trace?.Invoke($"brain: plan [{string.Join(", ", plan.Steps.Select(s => BrainPlan.NameOf(s.Tool)))}] in {clock.ElapsedMilliseconds} ms");
-            if (plan.Steps.Count > 0)
+            var steps = BrainPlan.Tidy(plan.Steps);
+            var say = plan.Say;
+            Trace?.Invoke($"brain: plan [{string.Join(", ", steps.Select(s => BrainPlan.NameOf(s.Tool)))}] in {clock.ElapsedMilliseconds} ms{(steps.Count < plan.Steps.Count ? $" ({plan.Steps.Count - steps.Count} new-tab step dropped)" : string.Empty)}");
+            if (onlyPages)
+            {
+                if (BrainPlan.OnlyPages(steps) is not { } pages)
+                {
+                    // "A new GitHub tab" planned as switching to the GitHub app and clicking there: never what was asked.
+                    Trace?.Invoke("brain: the plan opens no page; not run");
+                    return null;
+                }
+
+                if (pages.Count < steps.Count)
+                {
+                    // The model's sentence may describe the dropped steps ("Switched to WhatsApp and opened GitHub").
+                    Trace?.Invoke($"brain: {steps.Count - pages.Count} step(s) besides opening the page dropped");
+                    say = string.Empty;
+                }
+
+                steps = pages;
+            }
+
+            if (steps.Count > 0)
             {
                 // Windows and pages are about to change: "send" must not press Enter in a typing target left behind.
                 ClearPending();
                 Unbind();
             }
 
-            var run = new BrainRun { Heard = heard, Say = plan.Say, Started = _options.Clock(), PlaceBefore = _place };
-            return await RunPlanAsync(run, plan.Steps, 0, confirmedFirst: false, ct).ConfigureAwait(false);
+            var run = new BrainRun { Heard = heard, Say = say, Started = _options.Clock(), PlaceBefore = _place };
+            return await RunPlanAsync(run, steps, 0, confirmedFirst: false, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -135,7 +172,7 @@ public sealed partial class InteractionController
         }
         finally
         {
-            Interlocked.Exchange(ref _brainRunning, 0);
+            SetBrainRunning(false);
         }
     }
 
@@ -162,7 +199,7 @@ public sealed partial class InteractionController
 
         pending.Run.Heard = heard;
         pending.Run.Started = _options.Clock();
-        Interlocked.Exchange(ref _brainRunning, 1);
+        SetBrainRunning(true);
         try
         {
             return await RunPlanAsync(pending.Run, pending.Steps, pending.Next, confirmedFirst: true, ct).ConfigureAwait(false);
@@ -175,7 +212,7 @@ public sealed partial class InteractionController
         }
         finally
         {
-            Interlocked.Exchange(ref _brainRunning, 0);
+            SetBrainRunning(false);
         }
     }
 

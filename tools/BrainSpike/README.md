@@ -1,7 +1,8 @@
 # BrainSpike
 
-Measures local language models as Jarvis's planner: 21 requests with screen summaries, checked automatically (the
-spikes' tables in `docs/design/ai-brain.md` ran the first 20; the 21st is lab 3's real screen).
+Measures local language models as Jarvis's planner: 25 requests with screen summaries, checked automatically (the
+spikes' tables in `docs/design/ai-brain.md` ran the first 20; the 21st is lab 3's real screen; 22–25, opening
+Instagram with Chrome in front, came from the 19 Nov report). Plans are checked after `BrainPlan.Tidy`, as the app runs them.
 It uses the app's own prompt, grammar and plan reader (`BrainPrompt`, `BrainPlan` in `src/VoiceAssistant.Core`), so a
 change to the prompt is measured here before it ships. Not part of the app build.
 

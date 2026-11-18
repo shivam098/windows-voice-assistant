@@ -89,6 +89,7 @@ Speak naturally — polite padding is understood: *“Hey Jarvis, can you open N
 | “Go to the search box” | Browsers: the address/search bar. Other apps: the box labelled “search”. Then dictate your query |
 | “Go to the address bar” | Browsers |
 | “Search for weather in Bangalore” | Focuses search, types, presses Enter |
+| “Open instagram.com” / “Open Instagram in a new tab” | Opens the page in a new tab of the browser in front. A site's name goes to the AI brain (it knows the address); without it, a web search |
 | “New tab”, “Close tab”, “Refresh”, “Scroll down” | Browser/app shortcuts |
 | “Go back” / “previous page”, “go forward” / “next page” | Back and forward in the browser or File Explorer (Alt+Left / Alt+Right). For a page's own “Next” link (search results), say “click next” |
 | “Go up” / “parent folder” | File Explorer: the folder that contains this one (Alt+Up) |
@@ -177,12 +178,13 @@ Requests the commands above don't cover go to an AI model that runs **on your PC
 | “…mute the video” · “…play the second video” · “…maximize this window” | Clicks Mute · clicks the second video · presses Win+Up |
 | “…reply thanks to Rahul on WhatsApp” | Opens Rahul's chat, types a thank-you, then asks “Send it?”: say **yes** (or “send it”) |
 | “…what's the weather in Bangalore?” · “…find a pasta recipe on YouTube” | Opens Google / YouTube results |
+| “…open Instagram in a new tab” | Opens instagram.com in a new tab of the browser you're using |
 | “…how are you?” · “…tell me a joke” | Answers on the pill |
 
 - **Get it:** Settings › *AI brain* › **Download** (one time, about 2.4 GB: [llama.cpp](https://github.com/ggml-org/llama.cpp) and the [Qwen3 4B Instruct](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507) model, both verified). On a Snapdragon PC it runs on the graphics chip; a request takes about 3–6 seconds from “Thinking…” to the first action.
 - **Safe by design:** it acts only on requests that start with **“Hey Jarvis”**, so conversation near the microphone isn't acted on. It asks for a **yes** before sending, deleting, buying, closing, opening a program or typing more than 200 characters; never types or presses keys in terminals, the Run box, File Explorer or the Start menu's search, and in a browser types only into the page, never the address bar; opens only web links; stops after 8 steps or 30 seconds; **Esc** stops it at once.
-- It's a small model: about 17 in 20 test requests come out right ([measurements](docs/design/ai-brain.md)). If it picks the wrong thing, say it more precisely, or use the commands above.
-- It unloads after an hour unused (`brainKeepLoadedMinutes`) to free about 3 GB of memory, and reloads on your next request.
+- It's a small model: about 18 in 21 test requests come out right ([measurements](docs/design/ai-brain.md)). If it picks the wrong thing, say it more precisely, or use the commands above.
+- It unloads after an hour unused (`brainKeepLoadedMinutes`) to free about 4 GB of memory, and reloads when you next say “Hey Jarvis” (so say “Hey Jarvis”, then the request). While it's thinking, it ignores what else you say; press **Esc** to stop it.
 
 Full behaviour: [docs/specs/voice-commands.md](docs/specs/voice-commands.md#anything-else-the-ai-brain); design and measurements: [docs/design/ai-brain.md](docs/design/ai-brain.md).
 
@@ -252,7 +254,7 @@ Microphone ─┬─ (Ctrl+Win held) ─────────────► 
 | `tests/NavigationLab` | Test pages and a self-test script for voice navigation on real browsers |
 | `tools/SpeechBench` | Benchmarks, live microphone diagnostics, noisy-room replay |
 | `tools/ModelConvert` | Converts Hugging Face Whisper checkpoints to ggml (how the Hindi + English model is built) |
-| `tools/BrainSpike`, `tools/AionBench` | Measure language models as the AI brain with the app's own prompt (21 requests, checked automatically) |
+| `tools/BrainSpike`, `tools/AionBench` | Measure language models as the AI brain with the app's own prompt (25 requests, checked automatically) |
 
 ## Develop
 

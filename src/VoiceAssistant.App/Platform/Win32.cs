@@ -152,6 +152,31 @@ internal static partial class Win32
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern int GetWindowText(nint hWnd, StringBuilder text, int maxCount);
 
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool QueryFullProcessImageName(nint process, uint flags, StringBuilder exeName, ref uint size);
+
+    /// <summary>The full path of the process's executable, or null when it can't be read (e.g. elevated, or gone).</summary>
+    public static string? ProcessImagePath(int processId)
+    {
+        var process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)processId);
+        if (process == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            var path = new StringBuilder(1024);
+            var size = (uint)path.Capacity;
+            return QueryFullProcessImageName(process, 0, path, ref size) ? path.ToString(0, (int)size) : null;
+        }
+        finally
+        {
+            CloseHandle(process);
+        }
+    }
+
     [LibraryImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
     public static partial nint GetWindowLongPtr(nint hWnd, int index);
 

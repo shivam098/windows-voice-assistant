@@ -34,9 +34,22 @@ public sealed partial class InteractionController
 
     private sealed record Choice(int Number, ChoiceKind Kind, WindowRef Window, UiElement? Element = null, BrowserTab? Tab = null);
 
-    /// <summary>“go to X” / “open X”: a tab, an app, or (last) something in the front window called X.</summary>
+    /// <summary>“go to X” / “open X”: a web address, a tab, an app, or (last) something in the front window called X.</summary>
     private async Task<bool> NavigateAsync(string spokenName, bool newWindow, string heard, CancellationToken ct)
     {
+        if (!_apps.HasExactName(spokenName) && BrainSafety.WebAddress(spokenName) is { } page)
+        {
+            // "open instagram.com" opens it; "go to youtube.com" first looks for a tab that shows it already (only a site's
+            // front page: any GitHub tab isn't "github.com/shivam098"). Paint.NET and Battle.net are apps, opened as before.
+            if (!newWindow && page.AbsolutePath == "/" && page.Query.Length == 0 &&
+                await TrySelectNamedTabAsync(spokenName, heard, ct).ConfigureAwait(false) is { } shown)
+            {
+                return shown;
+            }
+
+            return await OpenWebPageAsync(page, $"Opened {page.Host}.", heard, ct).ConfigureAwait(false);
+        }
+
         // "Open the MrBeast video on YouTube" names a tab only in passing: with the AI brain on, such descriptions need a
         // strong tab match, otherwise the brain gets the whole request (it can switch to the tab and click the video).
         var tabMinimum = BrainTakes && _brainRequest is not null && TranscriptText.Normalize(spokenName).Split(' ', StringSplitOptions.RemoveEmptyEntries).Length >= 3
@@ -80,6 +93,84 @@ public sealed partial class InteractionController
         return false;
     }
 
+    /// <summary>
+    /// “open Instagram in a new tab”: a web address opens directly; anything else goes to the AI brain, which may only
+    /// open a page (it knows the site's address); else the app called that opens, else a web search for the name, never
+    /// for something on screen (“the first link”). “… in a new window” opens a new window of an app first.
+    /// </summary>
+    private async Task<bool> OpenInNewPlaceAsync(string name, bool window, string heard, CancellationToken ct)
+    {
+        if (name.Length == 0)
+        {
+            Report(StatusKind.Warning, "I didn't catch what to open.", heard);
+            return false;
+        }
+
+        // "Open Paint.NET in a new window" means the app; "open battle.net in a new tab" can only mean the site.
+        if (!(window && _apps.HasExactName(name)) && BrainSafety.WebAddress(name) is { } page)
+        {
+            return await OpenWebPageAsync(page, $"Opened {page.Host} in a new tab.", heard, ct).ConfigureAwait(false);
+        }
+
+        // Only an app called that: "YouTube" isn't YouTube Music, "Google" isn't Google Chrome.
+        var isApp = _apps.Resolve(name, fuzzy: false) is not AppResolution.NotFound;
+        if (window && isApp)
+        {
+            return await OpenAsync(name, newWindow: true, heard, ct).ConfigureAwait(false);
+        }
+
+        var askedBrain = false;
+        if (TakeBrainRequest() is { } request)
+        {
+            askedBrain = true;
+            if (await AskBrainAsync(request, heard, ct, onlyPages: true).ConfigureAwait(false) is { } done)
+            {
+                return done;
+            }
+        }
+
+        // "Open Notepad in a new tab" (Notepad and File Explorer have tabs): the app, never a web search for its name.
+        if (isApp)
+        {
+            return await OpenAsync(name, newWindow: false, heard, ct).ConfigureAwait(false);
+        }
+
+        if (CommandParser.NamesSomethingOnScreen(name))
+        {
+            // "Open the first link in a new tab": nothing here opens something on screen in a new tab, and it's no website.
+            Report(StatusKind.Warning, $"I can open {(window ? "apps and websites" : "websites")} in a new {(window ? "window" : "tab")}, not “{Short(name, 40)}”.", heard);
+            return false;
+        }
+
+        var (search, _) = BrainSafety.SearchUrl(null, name);
+        var found = $"Searched the web for “{Short(name, 40)}”.";
+        return await OpenWebPageAsync(
+            search,
+            BrainTakes && !askedBrain ? $"{found} Start with “{_options.WakeWordLabel}” and the AI brain opens the site itself." : found,
+            heard,
+            ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Opens the page in a new tab (of the browser in front, else the default browser).</summary>
+    private async Task<bool> OpenWebPageAsync(Uri url, string message, string heard, CancellationToken ct)
+    {
+        var result = await _desktop.OpenUrlAsync(url, ct).ConfigureAwait(false);
+        Trace?.Invoke($"page {(result.Success ? "opened" : "not opened")}");
+        if (!result.Success)
+        {
+            Report(StatusKind.Warning, result.Message, heard);
+            return false;
+        }
+
+        if (result.Window is { } browser)
+        {
+            SetPlace(browser, AppLabel(browser, _apps.FindProfileForProcess(browser.ProcessName, browser.Title)));
+        }
+
+        Report(StatusKind.Success, message, heard, result.Window is null ? null : _place);
+        return true;
+    }
+
     /// <summary>Null when no tab matches (so the caller tries apps); otherwise whether the tab was selected.</summary>
     private async Task<bool?> TrySelectNamedTabAsync(string name, string heard, CancellationToken ct, int minScore = NameMatcher.Words - 10)
     {
@@ -99,13 +190,22 @@ public sealed partial class InteractionController
     private async Task<bool> SelectTabAsync(ElementTarget target, string heard, CancellationToken ct)
     {
         var tabs = await _desktop.ListTabsAsync(ct).ConfigureAwait(false);
+        var resolution = TargetResolver.ResolveTab(tabs, target);
+        if (resolution is Resolution<BrowserTab>.None && target.Name.Length > 0 && TakeBrainRequest() is { } request &&
+            await AskBrainAsync(request, heard, ct, onlyPages: true).ConfigureAwait(false) is { } done)
+        {
+            // No tab has that name ("open the Instagram tab" with none open, "open a new Instagram tab"): the AI brain may
+            // open the site. A plan that opens no page isn't run, and the tab is reported not found below.
+            return done;
+        }
+
         if (tabs.Count == 0)
         {
             Report(StatusKind.Warning, "I don't see any browser tabs.", heard);
             return false;
         }
 
-        switch (TargetResolver.ResolveTab(tabs, target))
+        switch (resolution)
         {
             case Resolution<BrowserTab>.Single single:
                 return await ActivateTabAsync(single.Item, heard, ct).ConfigureAwait(false);
@@ -422,7 +522,8 @@ public sealed partial class InteractionController
     /// <summary>Commands after which the old typing target may show different content (another tab, page or app).</summary>
     private static bool MovesAway(VoiceCommand command) => command.Kind switch
     {
-        CommandKind.OpenApp or CommandKind.SwitchToApp or CommandKind.SelectTab or CommandKind.Click or CommandKind.Choose => true,
+        CommandKind.OpenApp or CommandKind.SwitchToApp or CommandKind.SelectTab or CommandKind.Click or CommandKind.Choose or
+            CommandKind.OpenInNewTab or CommandKind.OpenInNewWindow => true,
         CommandKind.PressKeys => TabChangingChords.Contains(command.Argument ?? string.Empty),
         _ => false,
     };

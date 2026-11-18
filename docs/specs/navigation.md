@@ -51,6 +51,12 @@ All phrases are matched as whole utterances after normalisation and polite-paddi
 | “the YouTube tab”, “go to the YouTube tab”, “open the WhatsApp tab” | By name |
 | “the tab with / where / that has / showing / for YouTube (is open / open)” | By name |
 
+“Open Instagram in a new tab” (in / on / into a new / another / a second / separate tab or window) is **not** a tab
+name: it opens Instagram in a new tab ([voice-commands.md](voice-commands.md#apps)). “The other tab” and “the second
+tab” are tabs already open: “start typing in the second tab” switches to it. “Open a new Instagram tab” and “the What's
+New tab” are tab names. A tab name that matches no tab goes to the AI brain when the request was addressed to Jarvis;
+only a plan that opens a page runs.
+
 ### Clicking
 
 | Say | Meaning |
@@ -100,10 +106,11 @@ What “go to X” / “open X” / “click X” mean:
 
 | Command | Tries, in order |
 |---|---|
-| “go to X”, “switch to X” | 1. If X is **exactly** an app's name or alias → that app. 2. A **tab** whose title matches X. 3. An app matching X (fuzzy). 4. A **button/element** in the front window whose name matches X strongly (score ≥ 70). 5. “I couldn't find an app, tab or button called ‘X’.” |
-| “open X” | 1. An app matching X (opens a new window where defined). 2. A tab. 3. A strong element match. |
+| “go to X”, “switch to X” | 0. If X is a **web address** (“youtube.com”) and not exactly an app's name (Paint.NET) → for a site's front page, a tab that shows it; else the page in a new tab. 1. If X is **exactly** an app's name or alias → that app. 2. A **tab** whose title matches X. 3. An app matching X (fuzzy). 4. A **button/element** in the front window whose name matches X strongly (score ≥ 70). 5. The AI brain, if on and addressed to Jarvis. 6. “I couldn't find an app, tab or button called ‘X’.” |
+| “open X” | 0. A web address (not exactly an app's name) → the page in a new tab. 1. An app matching X (opens a new window where defined). 2. A tab. 3. A strong element match. 4. The AI brain, as above. |
+| “open X in a new tab” | A web address → the page. Otherwise the AI brain (addressed; only page-opening steps run), else an app called exactly X, else a web search for X, never for something on screen (“the first link”: a message). Never a tab. |
 | “click X” (and select, tap, press …) | Elements in the front window only (score ≥ 50). |
-| “the X tab”, “first tab” | Tabs only. |
+| “the X tab”, “first tab” | Tabs only; a name that matches no tab goes to the AI brain, if on and addressed (only page-opening steps run). |
 
 One clear best match acts. Several equally good matches → **choices** (see below). None → a message saying what was
 tried, suggesting “show numbers”.

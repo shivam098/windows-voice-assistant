@@ -76,14 +76,19 @@ internal sealed partial class WindowsDesktop
         // The browser may only take the front if this process could: make it the last input source, then pass the right on.
         KeyboardInput.TapUnassignedKey();
         Win32.AllowSetForegroundWindow(Win32.ASFW_ANY);
-        try
+
+        // "Open Instagram in a new tab" with Chrome in front means a tab in Chrome, whatever the default browser is.
+        if (!OpenInBrowserInFront(url))
         {
-            Process.Start(new ProcessStartInfo(url.AbsoluteUri) { UseShellExecute = true })?.Dispose();
-        }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            Log.Warn($"open url failed: {ex.GetType().Name} 0x{ex.HResult:X8}");
-            return DesktopResult.Fail("Couldn't open the web browser.");
+            try
+            {
+                Process.Start(new ProcessStartInfo(url.AbsoluteUri) { UseShellExecute = true })?.Dispose();
+            }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+            {
+                Log.Warn($"open url failed: {ex.GetType().Name} 0x{ex.HResult:X8}");
+                return DesktopResult.Fail("Couldn't open the web browser.");
+            }
         }
 
         // The page is shown when a browser window appears or its title (the tab's) changes.
@@ -115,6 +120,35 @@ internal sealed partial class WindowsDesktop
 
         Log.Info("open url: browser window not seen");
         return DesktopResult.Ok("Asked the browser to open the page.");
+    }
+
+    /// <summary>
+    /// Opens the page as a new tab of the browser in front, by starting that browser's own program with the address
+    /// (a running browser hands it to its open window). False when no browser is in front or it can't be started that way
+    /// (run as administrator, a Store app's protected folder): the default browser opens it instead.
+    /// </summary>
+    private bool OpenInBrowserInFront(Uri url)
+    {
+        if (GetForegroundWindow() is not { } front || !BrainSafety.IsBrowser(front) || Win32.IsProcessElevated(front.ProcessId) == true ||
+            Win32.ProcessImagePath(front.ProcessId) is not { } program || !File.Exists(program))
+        {
+            return false;
+        }
+
+        try
+        {
+            // One argument, an http(s) address checked by the caller, so it can't be read as a browser switch.
+            var start = new ProcessStartInfo(program) { UseShellExecute = false };
+            start.ArgumentList.Add(url.AbsoluteUri);
+            Process.Start(start)?.Dispose();
+            Log.Info("open url: in the browser in front");
+            return true;
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            Log.Warn($"open url in the browser in front failed: {ex.GetType().Name} 0x{ex.HResult:X8}");
+            return false;
+        }
     }
 
     /// <summary>Visible top-level app windows, front-most first (the active one first even under always-on-top windows).</summary>

@@ -8,10 +8,11 @@ public static class BrainPrompt
 {
     public const string System = """
 You control a Windows PC. Turn the request into the FEWEST steps, using only these tools:
-focus_window(target: a window title from the screen) · open_app(target: app name, only if no such window is open) · open_url(target: URL) ·
+focus_window(target: a window title from the screen) · open_app(target: app name, only if no such window is open) · open_url(target: a site's address like "instagram.com"; opens it in a new tab) ·
 web_search(target: "youtube" or "google", text: query) · click(target: exact item name from the screen, without the role word) ·
 type_text(text) · press(target: keys like "ctrl+w", "win+up", "m") · scroll(target: "up" or "down") · ask(text: question)
 Rules: act on the window the request is about (focus it first if it isn't in front). If the item isn't on screen, web_search then click it.
+To open a website or go to an address, use open_url (it opens a new tab by itself): never type an address, press ctrl+t or click New Tab.
 Only press enter or click Send when the user asked to send. To delete, clear or remove, click the item that does it (the PC asks the user first).
 Never click anything unrelated to the request. Questions and chat need no steps: just answer in "say".
 If the request is unclear, use one ask step. "text" is "" when not used. "say" is one short sentence.
@@ -25,6 +26,11 @@ Windows (front first):
 2. "Spotify Premium" (Spotify), behind
 Items in "Spotify Premium": button "Play"; button "Next"; link "Daily Mix 1"; link "Liked Songs"
 """, "play daily mix 1 on spotify", """{"steps":[{"tool":"focus_window","target":"Spotify Premium","text":""},{"tool":"click","target":"Daily Mix 1","text":""}],"say":"Playing Daily Mix 1."}"""),
+        ("""
+Windows (front first):
+1. "Inbox (3) - Gmail - Google Chrome" (Chrome), maximized, in front
+Items in "Inbox (3) - Gmail - Google Chrome": tab "Inbox (3) - Gmail"; button "New Tab"; edit "Address and search bar"; button "Compose"
+""", "open github in a new tab", """{"steps":[{"tool":"open_url","target":"github.com","text":""}],"say":"Opening GitHub in a new tab."}"""),
         ("""
 Windows (front first):
 1. "Untitled - Notepad" (Notepad), left half, in front

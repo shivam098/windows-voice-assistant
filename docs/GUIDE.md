@@ -74,8 +74,8 @@ Full grammar and time phrases: [specs/idea-board.md](specs/idea-board.md).
 
 1. Open the window's **Settings** page › *AI brain* › **Download** (one time, about 2.4 GB; you can keep using the app). The status line says *Ready* when it's done.
 2. Say **“Hey Jarvis, open the MrBeast video on YouTube”** with YouTube open in a window behind another one. The pill shows *Thinking…*, then the YouTube window comes to the front and the video opens.
-3. More to try: “mute the video”, “play the second video”, “what's the weather in Bangalore?”, “reply thanks to Rahul on WhatsApp” (it types the reply and asks **“Send it?”**: say “yes”), “tell me a joke”.
-4. Start each request with **“Hey Jarvis”** (or say “Hey Jarvis”, then the request): talk near the microphone without it is never acted on. It asks for a **“yes”** before anything that sends, deletes, buys, closes or starts a program. **Esc** stops it at any time.
+3. More to try: “mute the video”, “play the second video”, “open Instagram in a new tab”, “what's the weather in Bangalore?”, “reply thanks to Rahul on WhatsApp” (it types the reply and asks **“Send it?”**: say “yes”), “tell me a joke”.
+4. Start each request with **“Hey Jarvis”** (or say “Hey Jarvis”, then the request): talk near the microphone without it is never acted on. After an hour unused the model unloads; saying “Hey Jarvis” first starts loading it while you say the request. It asks for a **“yes”** before anything that sends, deletes, buys, closes or starts a program. While it's thinking it ignores what else you say; **Esc** stops it at any time.
 5. To keep its files on another drive, set it in the settings file before downloading, for example `"brainFolder": "D:\\VoiceAssistant\\brain"`.
 
 ---

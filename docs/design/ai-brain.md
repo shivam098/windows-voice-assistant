@@ -69,8 +69,9 @@ match: `ask_user("Which one?", [titles])`.
 
 ### Safety rules (enforced in code, not by the model)
 
-- At most 8 steps and 30 seconds per request. **Esc** cancels at once (v1; a spoken "stop" waits behind the running
-  request).
+- At most 8 steps and 30 seconds per request. **Esc** cancels at once. Speech while a request is being planned or run
+  is ignored (since v0.12.1), so a spoken "stop" doesn't stop it either: Esc does. Speech that began before the brain
+  started or stopped is ignored too, so a "yes" said before it asked never answers its question.
 - **Confirm first** before anything that sends, deletes, buys, closes unsaved work or types more than 200 characters.
   The pill asks; "yes" goes ahead (v1 doesn't take Enter, which would go to the app in front).
 - Never act in password fields, elevated windows, or the lock screen (the existing refusals stay).
@@ -202,7 +203,7 @@ Apache-2.0 (docs/THIRD-PARTY-NOTICES.md); neither is bundled, Settings downloads
    ▼
 InteractionController.AskBrainAsync  (Core, platform-independent, unit-tested)
    ├─ ScreenSummary: windows front to back + items of up to 2 windows (front, named in the request, next)
-   ├─ BrainPrompt: the measured system prompt + 3 examples + "Screen: … Request: …"
+   ├─ BrainPrompt: the measured system prompt + 4 examples + "Screen: … Request: …"
    ├─ IBrainModel.CompleteAsync ──► LlamaBrain (App): llama-server on 127.0.0.1, random port + key, job object
    ├─ BrainPlan.Parse: lenient JSON, known tools only, ≤ 8 steps
    └─ run each step with the existing abilities; safety gates in code (BrainSafety)
@@ -288,6 +289,83 @@ user's Chrome, the app's real UI Automation scans; five lab runs):
 - **Chrome limitation (existing, not the brain's):** a *new* Chrome window exposes only the browser's own buttons to UI
   Automation, not the page, so the brain can't see its links (the first lab run failed this way). Pages in windows
   that were already open are fine. Tracked with the navigation lab.
+
+## v0.12.1: “open Instagram in new tab” (19 Nov 2026)
+
+Reported: “Hey Jarvis”, then “open Instagram in new tab”, and Jarvis said it didn't recognise the command. The log
+(timings and outcomes only, never words) showed a 3-second request planned by the brain in **13.7 s** (the model had
+unloaded after an hour unused: 8.2 s to load, 3.7 s to read the prompt with an empty cache, 1.8 s to answer) with a
+single focus_window step, so nothing opened; and two phrases said during that wait, run afterwards: one with no
+“Hey Jarvis” (“Not a command I know…”) and one read as a tab name (“I couldn't find a tab called …”). The words aren't
+logged, so which phrase was which is not known. Four causes, four fixes:
+
+1. **The grammar read it as a tab name.** “<verb> X tab” picks a tab, so “open Instagram in new tab” meant “the tab
+   called *instagram in new*”, and a failed tab pick never reached the brain. Now “open X in a new / another tab
+   (window)”, “open a new tab and open X” and “open a new tab with X” open X: a web address directly, a name through the
+   brain (it knows the site's address), else a web search; “open / go to *address*” opens it too. Addresses lose their
+   dots when transcripts are normalised (“instagram com”), so they're taken back from the words as said.
+2. **The model didn't know how to open a website.** Replayed with Chrome in front, its plans were Ctrl+T and typing
+   into the address bar (refused by the address-bar rule), clicking Chrome's “New Tab” only, or open_app “Instagram”.
+   The prompt now says open_url opens a new tab by itself and addresses are never typed, with a fourth example (“open
+   github in a new tab” → open_url “github.com”). A Ctrl+T or “New Tab” step right before open_url or web_search is
+   dropped (`BrainPlan.Tidy`), so no empty tab is left. Bench: **18/25 → 22/25** (four new cases on opening Instagram;
+   the original 21 unchanged at 18, same three misses), median 2.2 → 1.9 s.
+3. **Links opened in the default browser** (Edge here) even with Chrome in front. open_url now starts the front
+   browser's own program with the address (a new tab in its window), else the default browser.
+4. **The first request after an idle hour was slow, and speech during the wait ran late.** “Hey Jarvis” on its own
+   now starts loading a sleeping model while the request is said. Speech heard while the brain plans or acts is
+   dropped with “Still working on your last request. Press Esc to stop it.”, instead of running afterwards on a changed
+   screen.
+
+Two rounds of independent code review found more problems in these fixes, all fixed before release, each with a unit
+test:
+
+- “The second tab” and “the other tab” counted as new tabs, so “start typing in the second tab” searched the web for
+  “typing” and “go to Gmail in the other tab” no longer switched to it. Only a new / another / a second / a different /
+  a separate tab or window is new now, and typing phrases and names ending in “tab” or “window” are left to the tab
+  grammar.
+- Apps named like addresses (Paint.NET, Battle.net) opened their websites: an app called exactly that wins.
+- Close variants were still tab names (“open a new Instagram tab”; “open Instagram new tab”, as speech recognition
+  drops the “in”). A tab name that matches no tab now goes to the brain when addressed, like “go to X” and “click X”.
+  (Reading them as new tabs, tried first, broke real tab names: a second review found “open the What's New tab”
+  searching the web for “whats”.)
+- A “yes” said straight after a request was queued before the brain started, so it could answer a question the user
+  hadn't seen (“Click ‘Delete’?”). The controller's `BrainChanges` counter moves whenever the brain starts or stops; the
+  host reads it when speech starts and passes it with the transcript, and speech that began before the latest change
+  is ignored (logged, nothing shown). A “yes” run together with background sound that started earlier is dropped too;
+  saying it again works.
+- Without the brain or “Hey Jarvis”, “open Notepad in a new tab” and “open the first link in a new tab” searched the
+  web: an app called exactly that opens (not by a fuzzy match: “YouTube” isn't YouTube Music), and something on screen
+  (“the first link”, “this video”, “link 3”) gets a message instead, as nothing here can open it in a new tab.
+- “Go to github.com/shivam098” switched to any GitHub tab: only a site's front page looks for an open tab.
+
+**Lab 7 (19 Nov 2026) and the page-only rule.** A live run, with the build from before the second review, said “Hey
+Jarvis, open a new GitHub tab” with Chrome in front and the GitHub Copilot app open. The brain scanned the Copilot app
+(its title names the request) and planned focus_window and click: it brought that app to the front and clicked one of
+its buttons (not a destructive one, which would have asked first; names aren't logged). The lab's next check (“the
+title contains GitHub”) passed on “GitHub Copilot”, so its “close this tab” pressed Ctrl+W in that app before a later
+check stopped the run. The request asked for a page, so for “in a new tab” and for tab names that match no tab, only
+the plan's open_url and web_search steps run now (`BrainPlan.OnlyPages`, which also drops the model's closing sentence
+when other steps go, as it may describe them); a plan with neither (or no steps) isn't run, and the request falls back
+to the fixed handling (“I couldn't find a tab called …”, an app called exactly that, or a web search). Labs check that
+the browser is in front before pressing keys.
+
+Lab 8 (19 Nov 2026, the final build, every key press guarded by a check that Chrome is in front): “Open Instagram in
+new tab” after “Hey Jarvis” opened Instagram in a new Chrome tab again (planned in 5.8 s with the model loading from
+“Hey Jarvis”), and example.com opened without the model. “Go to the Instagram tab” with none open was planned as
+[focus_window, click, type_text, press] (typing the address): not run, “I couldn't find a tab called …”, Chrome stayed
+in front. Replayed with the app's prompt (temperature 0) on two screens (Chrome with five tabs; Chrome and the GitHub
+Copilot app), the tab-name phrasings (“go to / switch to / open the Instagram tab”, “open a new Instagram tab”, “open
+Instagram new tab”, “open a new GitHub tab”) planned a page in **6 of 12**; the other 6 aren't run (3 would have
+clicked the YouTube tab, 1 only opened an empty tab). “Open Instagram / GitHub in a new tab” planned open_url in 4 of 4.
+
+Measured live (19 Nov 2026, self-test, Chrome in front with Edge as the default browser, the model asleep at the
+start as after an idle hour): “Hey Jarvis”, then 5 s later “Open Instagram in new tab.” The model started loading on
+“Hey Jarvis” (ready 6.1 s later, prompt cache filled by the warm-up), so the request was planned in **6.2 s**
+(open_url “instagram.com”, the cached instructions plus 170 new tokens in 0.9 s, the answer in 1.6 s) instead of
+13.7 s, and Instagram was open **in a new Chrome tab** 1.3 s later. “Open example.com in a new tab” opened in Chrome in
+1.3 s without the model. The fourth example makes the cached instructions about 190 tokens longer (about 0.8 s more
+only when the cache is empty).
 
 Next:
 1. **Spoken replies** ("Opening it"): needs the microphone muted while it speaks, or Jarvis hears itself.

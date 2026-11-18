@@ -80,7 +80,11 @@ public sealed class AppCatalog
         return key.Length > 0 && _configured.Concat(_discovered).Any(a => Keys(a).Contains(key));
     }
 
-    public AppResolution Resolve(string spokenName)
+    /// <param name="fuzzy">
+    /// False: only an app's name or alias, also without its vendor (“outlook”), never a prefix or a slip (“youtube” is not
+    /// YouTube Music, “gmail” not Mail).
+    /// </param>
+    public AppResolution Resolve(string spokenName, bool fuzzy = true)
     {
         var key = TranscriptText.Compact(spokenName);
         if (key.Length == 0)
@@ -99,7 +103,7 @@ public sealed class AppCatalog
         {
             a => Keys(a).Contains(key),
             a => RelaxedKeys(a).Contains(key),
-            a => key.Length >= 4 && RelaxedKeys(a).Any(k => k.StartsWith(key, StringComparison.Ordinal) && k.Length - key.Length <= 8),
+            a => fuzzy && key.Length >= 4 && RelaxedKeys(a).Any(k => k.StartsWith(key, StringComparison.Ordinal) && k.Length - key.Length <= 8),
         };
 
         foreach (var tier in tiers)
@@ -112,7 +116,7 @@ public sealed class AppCatalog
         }
 
         // Near-misses from speech recognition or pronunciation: allow 1–2 letter differences on longer names.
-        var allowed = key.Length switch { < 4 => 0, <= 7 => 1, _ => 2 };
+        var allowed = !fuzzy ? 0 : key.Length switch { < 4 => 0, <= 7 => 1, _ => 2 };
         if (allowed > 0)
         {
             var scored = all

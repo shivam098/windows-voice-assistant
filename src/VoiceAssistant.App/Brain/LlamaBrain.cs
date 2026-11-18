@@ -36,6 +36,7 @@ internal sealed class LlamaBrain : IBrainModel, IDisposable
     private string _key = string.Empty;
     private nint _job;
     private long _lastUsed = Environment.TickCount64;
+    private int _preparing;
     private volatile BrainAvailability _availability;
 
     public LlamaBrain(BrainFiles files, TimeSpan keepLoaded)
@@ -54,14 +55,31 @@ internal sealed class LlamaBrain : IBrainModel, IDisposable
     public event Action? AvailabilityChanged;
 
     /// <summary>Loads the model and fills its prompt cache in the background, so the first request is quick.</summary>
-    public void WarmUp()
+    public void WarmUp() => _ = WarmUpAsync();
+
+    /// <summary>
+    /// “Hey Jarvis” on its own: a sleeping model starts loading (and fills its prompt cache) while the request is said,
+    /// instead of after it.
+    /// </summary>
+    public void Prepare()
     {
-        if (!_files.Installed || _shutdown.IsCancellationRequested)
+        if (_availability != BrainAvailability.Sleeping || Interlocked.Exchange(ref _preparing, 1) == 1)
         {
             return;
         }
 
-        _ = Task.Run(async () =>
+        Log.Info("brain: loading ahead of a request");
+        _ = WarmUpAsync().ContinueWith(_ => Interlocked.Exchange(ref _preparing, 0), TaskScheduler.Default);
+    }
+
+    private Task WarmUpAsync()
+    {
+        if (!_files.Installed || _shutdown.IsCancellationRequested)
+        {
+            return Task.CompletedTask;
+        }
+
+        return Task.Run(async () =>
         {
             try
             {
