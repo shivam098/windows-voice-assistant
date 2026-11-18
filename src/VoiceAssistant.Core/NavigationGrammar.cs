@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace VoiceAssistant.Core;
 
 /// <summary>
@@ -138,6 +140,140 @@ public sealed partial class CommandParser
 
     private static VoiceCommand? MatchTabOrClick(string n) => MatchTab(n) ?? MatchClick(n);
 
+    // A new tab or window as the place to open something: "in a new tab", "on another tab", "in a new browser window".
+    // Never "the other tab" or "the second tab": those are tabs already open. ("tap" is how speech recognition often
+    // hears "tab" here.)
+    private const string NewPlaceWords = @"(?:(?:a |the )?(?:new|separate|fresh)|(?:a )?different|another|an other|a second)";
+    private const string NewPlace = $@"{NewPlaceWords} (?:browser )?(?<place>tabs?|tap|windows?)";
+    private const string OpenPlaceVerbs = "open up|open|launch|load|pull up|bring up|go to|take me to|show me|show|get me|start|visit|navigate to";
+
+    // Not something to open: things on screen ("it", "this link"), kinds of tab ("a blank page in a new tab", "incognito in
+    // a new window") and typing ("open a new tab and start dictating").
+    private static readonly HashSet<string> NotAPageName =
+    [
+        "it", "this", "that", "them", "this one", "that one", "link", "this link", "that link", "page", "this page", "that page",
+        "incognito", "private", "inprivate", "in private", "blank", "empty", "browser",
+        "typing", "type", "writing", "write", "dictating", "dictation", "dictate",
+    ];
+
+    private static readonly string[] PageNameTails = [" website", " web site", " webpage", " web page", " homepage", " home page", " site", " page"];
+
+    /// <summary>
+    /// “open Instagram in a new tab”, “open instagram.com in another tab”, “open a new tab and go to GitHub”, “open Notepad
+    /// in a new window”: opening something there, never selecting a tab called “instagram in new”. (“Open a new Instagram
+    /// tab” stays a tab name, as “the What's New tab” is one; when no tab has it, the AI brain gets the request.)
+    /// </summary>
+    private static VoiceCommand? MatchOpenInNewPlace(string n)
+    {
+        // "start typing in a new tab", "open a new tab and start typing": typing commands, not a page called "typing".
+        if (TypingVerbs.Any(v => n.StartsWith(v + " ", StringComparison.Ordinal)) || ChainedStartTyping.Any(s => n.EndsWith(s, StringComparison.Ordinal)))
+        {
+            return null;
+        }
+
+        var m = InNewPlaceRegex().Match(n) is { Success: true } trailing ? trailing : NewPlaceThenRegex().Match(n);
+        if (!m.Success)
+        {
+            return null;
+        }
+
+        var name = StripArticles(m.Groups["name"].Value.Trim());
+        foreach (var tail in PageNameTails)
+        {
+            if (name.EndsWith(tail, StringComparison.Ordinal) && name.Length > tail.Length)
+            {
+                name = name[..^tail.Length].Trim();
+                break;
+            }
+        }
+
+        // "open it in a new tab" is about something on screen: the AI brain (or the click grammar) works that out.
+        // "go to the WhatsApp tab in a different window" names a tab that's open already.
+        return name.Length == 0 || NotAPageName.Contains(name) || EndsWithWord(name, "tab", "tabs", "window", "windows")
+            ? null
+            : new VoiceCommand(m.Groups["place"].Value.StartsWith("window", StringComparison.Ordinal) ? CommandKind.OpenInNewWindow : CommandKind.OpenInNewTab, name);
+    }
+
+    private static bool EndsWithWord(string text, params string[] words) =>
+        words.Any(w => text == w || text.EndsWith(" " + w, StringComparison.Ordinal));
+
+    /// <summary>
+    /// “first link”, “this video”, “downloads folder”, “number 3”, “link 3”, “the top result”: something on screen rather
+    /// than a website or app, so “open … in a new tab” never searches the web for it. Real names are spared: “Prime
+    /// Video”, “election results”, “Formula 1”, “Capital One”.
+    /// </summary>
+    internal static bool NamesSomethingOnScreen(string name)
+    {
+        var words = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0)
+        {
+            return false;
+        }
+
+        var last = words[^1];
+        var numbered = int.TryParse(last, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out _) ||
+            NumberWords.ContainsKey(last);
+        return (numbered && words is [_] or ["number" or "link" or "result" or "item" or "video" or "option" or "choice", _]) ||
+            words is ["top" or "bottom" or "other" or "latest" or "newest" or "oldest" or "same" or "main" or "current" or "middle", "one" or "ones" or "result" or "results" or "video" or "videos"] ||
+            OrdinalWords.ContainsKey(words[0]) || words[0] is "this" or "that" or "these" or "those" or "next" or "previous" ||
+            EndsWithWord(name, "link", "links", "folder", "folders", "file", "files", "item", "items", "button", "buttons") ||
+            name is "video" or "videos" or "image" or "images" or "picture" or "pictures" or "photo" or "photos" or "email" or "emails" or
+                "message" or "messages" or "post" or "posts" or "article" or "articles" or "result" or "results";
+    }
+
+    [GeneratedRegex($@"^(?:{OpenPlaceVerbs}) (?<name>.+?) (?:in|on|into|inside) {NewPlace}$")]
+    private static partial Regex InNewPlaceRegex();
+
+    [GeneratedRegex($@"^(?:open up|open|launch|start) {NewPlace}(?: and then| and| then)? (?:{OpenPlaceVerbs}|with|for|to) (?<name>.+)$")]
+    private static partial Regex NewPlaceThenRegex();
+
+    // The end of "open Instagram in a new" before "tab": a new tab, not a tab's name.
+    [GeneratedRegex($@"(?:^| )(?:in|on|into|inside) {NewPlaceWords}(?: browser)?$")]
+    private static partial Regex NewPlaceTailRegex();
+
+    /// <summary>The command's words as said: the replacement in “replace X with Y”, and web addresses (“instagram.com”).</summary>
+    private static IReadOnlyList<VoiceCommand> AsSaid(IReadOnlyList<VoiceCommand> commands, string cleaned) =>
+        WithWebAddresses(WithSpokenReplacement(commands, cleaned), cleaned);
+
+    /// <summary>
+    /// “open instagram.com in a new tab”: normalizing turned the address into “instagram com”, so it is taken back from
+    /// the words as said (or “instagram dot com” is joined up).
+    /// </summary>
+    private static IReadOnlyList<VoiceCommand> WithWebAddresses(IReadOnlyList<VoiceCommand> commands, string cleaned)
+    {
+        if (!commands.Any(OpensSomething))
+        {
+            return commands;
+        }
+
+        var said = SaidAddressRegex().Matches(cleaned).Select(m => m.Value.TrimEnd('.', ',', '!', '?', ';', ':').ToLowerInvariant()).ToList();
+        return commands
+            .Select(c => OpensSomething(c) && c.Argument is { } name && AddressAsSaid(name, said) is { } address ? c with { Argument = address } : c)
+            .ToList();
+
+        static bool OpensSomething(VoiceCommand c) =>
+            c.Kind is CommandKind.OpenApp or CommandKind.SwitchToApp or CommandKind.OpenInNewTab or CommandKind.OpenInNewWindow;
+    }
+
+    private static string? AddressAsSaid(string name, IReadOnlyList<string> said)
+    {
+        foreach (var address in said)
+        {
+            if (TranscriptText.Normalize(address) == name)
+            {
+                return address;
+            }
+        }
+
+        return SpokenDotsRegex().IsMatch(name) ? name.Replace(" dot ", ".", StringComparison.Ordinal) : null;
+    }
+
+    [GeneratedRegex(@"(?:https?://)?(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?:/\S*)?", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex SaidAddressRegex();
+
+    [GeneratedRegex(@"^[a-z0-9-]+(?: dot [a-z0-9-]+)+$")]
+    private static partial Regex SpokenDotsRegex();
+
     /// <summary>“click 3”, “number three”, “choose two”, “3”, “the second one”.</summary>
     private static int? MatchChoice(string n)
     {
@@ -233,6 +369,12 @@ public sealed partial class CommandParser
         if (OrdinalWords.TryGetValue(before, out var ordinal))
         {
             return Tab(string.Empty, ordinal);
+        }
+
+        if (NewPlaceTailRegex().IsMatch(before))
+        {
+            // "switch to Instagram in a new tab": a new tab, not one called "instagram in new".
+            return null;
         }
 
         // "new tab", "next tab", "close tab" are shortcuts handled earlier; anything else names the tab.

@@ -224,6 +224,8 @@ public class NavigationTests
     [InlineData("go to the tab where YouTube is open", "youtube", null)]
     [InlineData("switch to the tab with Gmail", "gmail", null)]
     [InlineData("open the WhatsApp tab", "whatsapp", null)]
+    [InlineData("Open the What's New tab.", "whats new", null)]
+    [InlineData("open New York Times tab", "new york times", null)]
     public void Tab_phrases(string phrase, string name, int? ordinal)
     {
         var command = One(phrase);
@@ -231,6 +233,48 @@ public class NavigationTests
         Assert.Equal(name, command.Target!.Name);
         Assert.Equal(ordinal, command.Target.Ordinal);
     }
+
+    [Theory]
+    [InlineData("Open Instagram in new tab.", CommandKind.OpenInNewTab, "instagram")]
+    [InlineData("Can you open Instagram in a new tab, please?", CommandKind.OpenInNewTab, "instagram")]
+    [InlineData("Open Instagram in a new tap.", CommandKind.OpenInNewTab, "instagram")]
+    [InlineData("Open the Instagram website in another tab", CommandKind.OpenInNewTab, "instagram")]
+    [InlineData("Open a new tab and then open Instagram", CommandKind.OpenInNewTab, "instagram")]
+    [InlineData("Open instagram.com in a new tab.", CommandKind.OpenInNewTab, "instagram.com")]
+    [InlineData("Open a new tab with github.com/shivam098.", CommandKind.OpenInNewTab, "github.com/shivam098")]
+    [InlineData("Open Notepad in a new window.", CommandKind.OpenInNewWindow, "notepad")]
+    [InlineData("Open instagram.com.", CommandKind.OpenApp, "instagram.com")]
+    [InlineData("Go to instagram dot com.", CommandKind.SwitchToApp, "instagram.com")]
+    [InlineData("Open Instagram in a second tab.", CommandKind.OpenInNewTab, "instagram")]
+    public void Opening_pages_never_selects_a_tab_named_after_the_request(string phrase, CommandKind kind, string name)
+    {
+        var command = One(phrase);
+        Assert.Equal(kind, command.Kind);
+        Assert.Equal(name, command.Argument);
+    }
+
+    [Theory]
+    [InlineData("Start typing in the second tab.")]
+    [InlineData("Open the second tab and start typing.")]
+    [InlineData("Open the second tab to type.")]
+    public void Typing_in_the_second_tab_selects_the_tab_that_is_open(string phrase)
+    {
+        var commands = new CommandParser().Parse(phrase, InteractionMode.Command).Commands;
+        Assert.Equal([CommandKind.SelectTab, CommandKind.StartTyping], commands.Select(c => c.Kind));
+        Assert.Equal(2, commands[0].Target!.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("Go to the WhatsApp tab in the other window.")]
+    [InlineData("Go to the WhatsApp tab in a different window.")]
+    [InlineData("Start typing in a new tab.")]
+    [InlineData("Open a new tab and start dictating.")]
+    [InlineData("Open a blank page in a new tab.")]
+    [InlineData("Open incognito in a new window.")]
+    public void Tabs_already_open_typing_and_kinds_of_tab_are_not_pages_to_open(string phrase) =>
+        Assert.DoesNotContain(
+            new CommandParser().Parse(phrase, InteractionMode.Command).Commands,
+            c => c.Kind is CommandKind.OpenInNewTab or CommandKind.OpenInNewWindow);
 
     [Theory]
     [InlineData("new tab", "Ctrl+T")]

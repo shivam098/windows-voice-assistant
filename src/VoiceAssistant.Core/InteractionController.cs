@@ -136,15 +136,26 @@ public sealed partial class InteractionController
     /// While typing, supplies the text to type from a second (e.g. Hindi + English) model. The command check still uses
     /// <paramref name="transcript"/>; this is only called when the utterance is to be typed.
     /// </param>
+    /// <param name="brainChangesWhenSpoken">
+    /// <see cref="BrainChanges"/> when the speech started. If the AI brain started or stopped since, the speech is ignored:
+    /// it was said before the brain's question or result was shown (“yes” said straight after a request).
+    /// </param>
     public async Task HandleTranscriptAsync(
         string transcript,
         float confidence,
         bool followsForcedCut = false,
         CancellationToken cancellationToken = default,
-        Func<Task<string>>? dictationTranscript = null)
+        Func<Task<string>>? dictationTranscript = null,
+        int? brainChangesWhenSpoken = null)
     {
         if (Mode == InteractionMode.Paused)
         {
+            return;
+        }
+
+        if (brainChangesWhenSpoken is { } spoken && spoken != BrainChanges)
+        {
+            Trace?.Invoke("speech from while the AI brain was busy: ignored");
             return;
         }
 
@@ -223,6 +234,12 @@ public sealed partial class InteractionController
             {
                 Awake();
                 _brainAddressed = true;
+                if (BrainTakes)
+                {
+                    // A request is probably next: a sleeping model starts loading while it's said.
+                    Brain!.Prepare();
+                }
+
                 Trace?.Invoke("wake");
                 Report(StatusKind.Info, "Yes? Say a command.", heard);
             }
@@ -407,6 +424,10 @@ public sealed partial class InteractionController
 
             case CommandKind.SwitchToApp:
                 return await NavigateAsync(command.Argument ?? string.Empty, newWindow: false, heard, ct).ConfigureAwait(false);
+
+            case CommandKind.OpenInNewTab:
+            case CommandKind.OpenInNewWindow:
+                return await OpenInNewPlaceAsync(command.Argument ?? string.Empty, window: command.Kind == CommandKind.OpenInNewWindow, heard, ct).ConfigureAwait(false);
 
             case CommandKind.StartTyping:
                 return await StartTypingAsync(heard, ct).ConfigureAwait(false);

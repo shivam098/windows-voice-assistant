@@ -93,19 +93,31 @@ B5–B6 and B10–B11 are also covered by unit tests (`tests/VoiceAssistant.Boar
 | A2 | YouTube's home page in a browser window behind a PowerShell window; “Hey Jarvis, open the MrBeast video on YouTube” | Pill: *Thinking…*; the browser comes to the front and the MrBeast video opens (about 5 s) |
 | A3 | A page with a “Delete history” button in front; “Hey Jarvis, clear my watch history”; then “no” | Pill asks “Click ‘Delete history’? Say ‘yes’…”; after “no”: *Cancelled*, nothing clicked |
 | A4 | PowerShell in front; “Hey Jarvis, type dir in this window and press enter” | Refused: “I don't type into command windows…”; nothing typed |
-| A5 | “Hey Jarvis, what's the weather in Bangalore?” | A Google (or the site's) results page opens in the default browser |
+| A5 | “Hey Jarvis, what's the weather in Bangalore?” | A Google (or the site's) results page opens, in the browser in front if there is one, else the default browser |
 | A6 | WhatsApp with a chat open; “Hey Jarvis, reply thanks to Rahul”; then “yes” | It types a thank-you, asks “Send it?”; after “yes” it is sent |
 | A7 | Ask something long-running, press Esc while the pill says *Thinking…* | *Stopped.*; nothing happens; listening carries on |
 | A8 | “Hey Jarvis, how are you?” | An answer on the pill; nothing else happens |
+| A9 | Chrome in front (Edge the default browser), model unloaded; “Hey Jarvis”, then “open Instagram in new tab” | “Hey Jarvis” starts loading the model; Instagram opens in a **new Chrome tab**; no empty tab is left |
+| A10 | “Open example.com in a new tab” | Opens at once in a new tab of the browser in front, without the AI brain |
+| A11 | Speak again while the pill says *Thinking…* | “Still working on your last request. Press Esc to stop it.”; what was said isn't run afterwards |
+| A12 | “Open the YouTube tab” with a YouTube tab open | Switches to that tab (still a tab name, unlike “in a new tab”) |
+| A13 | A page with a “Delete” button in front; “Hey Jarvis, delete this email” and “yes” straight after, before the pill asks | The pill asks “Click ‘Delete’?”; the early “yes” doesn't answer it; a “yes” after the question does |
+| A14 | “Start typing in the second tab”; “go to Gmail in the other tab” | Switches to that tab (and starts typing); never a new tab or a web search |
+| A15 | The GitHub Copilot app open, Chrome in front; “Hey Jarvis, open a new GitHub tab” | GitHub opens in a new Chrome tab, or “I couldn't find a tab called ‘new github’”; nothing is clicked in another app |
 
-A3–A8's rules are also covered by unit tests (`BrainTests`). A2–A5 run as a self-test script (`braindownload`,
-`brainwait`, then `say:` lines) on lab pages that look like YouTube, opened as a new tab in an existing Chrome window
-(a brand-new Chrome window doesn't expose its page to UI Automation).
+A3–A15's rules are also covered by unit tests (`BrainTests`, `NavigationTests`). A2–A5, A9 and A10 run as self-test
+scripts (`say:` lines) on lab pages that look like YouTube, opened as a new tab in an existing Chrome window (a
+brand-new Chrome window doesn't expose its page to UI Automation).
 
 Latest Windows run (18 Nov 2026, Snapdragon X Elite, Chrome; Edge for A5): A2, A3 (“Click ‘Delete history’?”, then
 “no”), A4 and A5 passed; A1's resume was checked by stopping a download at 6.3 MB and starting it again (it carried on
 and the SHA-256 matched); “play the video about the twisted bridge” opened the right video; 3.2–6.4 s from request to
-action (median 4.8 s). A6 to A8 rely on the unit tests so far (no live WhatsApp chat was used).
+action (median 4.8 s). A6 to A8 rely on the unit tests so far (no live WhatsApp chat was used). 19 Nov 2026 (v0.12.1):
+A9 passed (the model loaded on “Hey Jarvis”, planned in 6.2 s, Instagram opened in a new Chrome tab with Edge the
+default browser) and A10 passed (example.com in Chrome in 1.3 s, no model). A11 and A13 rely on review and unit tests so
+far (the self-test can't speak over a running request); A12 and A14 on the unit tests. Lab 8 (19 Nov, final build): A9
+and A10 passed again; A15's rule (only a page opens for a tab request) held live on “go to the Instagram tab”, whose
+plan typed the address instead: not run, Chrome stayed in front. A15 itself is covered by a unit test of lab 7's plan.
 
 The Windows runner uses `stoponfail`: if the test window isn't in front (Windows blocks background apps from taking
 focus while someone is typing), the run stops instead of typing elsewhere. Run it while the PC is idle.

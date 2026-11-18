@@ -68,6 +68,9 @@ internal sealed class AssistantHost : IDisposable
     private CancellationTokenSource _actionCts = new();
     private int _generation;
     private int _queuedUtterances;
+
+    // The AI brain's BrainChanges when the current speech began (written on the audio thread).
+    private int _brainChangesAtSpeech;
     private bool _captureStartedMicrophone;
     private volatile bool _capturing;
 
@@ -157,6 +160,8 @@ internal sealed class AssistantHost : IDisposable
         _segmenter = new UtteranceSegmenter(new SegmenterOptions { EndSilenceMs = settings.EndSilenceMs });
         _segmenter.SpeechStarted += () =>
         {
+            // What the AI brain was doing as this speech began: a "yes" said before it asked must never answer it.
+            Volatile.Write(ref _brainChangesAtSpeech, _controller.BrainChanges);
             if (_mode != InteractionMode.Standby)
             {
                 PostVoiceActivity("Hearing you…");
@@ -1148,7 +1153,18 @@ internal sealed class AssistantHost : IDisposable
             return;
         }
 
+        if (_controller.IsBrainRunning)
+        {
+            // Speech while the AI brain plans or acts would otherwise run once it's done: late, on a changed screen, and
+            // often just the request said again. It's dropped; Esc stops the brain at once.
+            Log.Info("speech while the AI brain was busy: ignored");
+            PostVoiceActivity(null);
+            Report(StatusKind.Info, _settings.PushToTalk ? "Still working on your last request. Press Esc to stop it." : "Still working on your last request.");
+            return;
+        }
+
         var generation = Volatile.Read(ref _generation);
+        var brainChanges = Volatile.Read(ref _brainChangesAtSpeech);
         if (Interlocked.Increment(ref _queuedUtterances) > MaxQueuedUtterances)
         {
             Interlocked.Decrement(ref _queuedUtterances);
@@ -1156,12 +1172,12 @@ internal sealed class AssistantHost : IDisposable
             return;
         }
 
-        Enqueue(() => TranscribeAndHandleAsync(utterance, generation));
+        Enqueue(() => TranscribeAndHandleAsync(utterance, generation, brainChanges));
     }
 
     private bool IsStale(int generation) => _pausePending || generation != Volatile.Read(ref _generation);
 
-    private async Task TranscribeAndHandleAsync(Utterance utterance, int generation)
+    private async Task TranscribeAndHandleAsync(Utterance utterance, int generation, int brainChanges)
     {
         try
         {
@@ -1184,7 +1200,7 @@ internal sealed class AssistantHost : IDisposable
 
             for (var i = 0; i < pieces.Count; i++)
             {
-                await HandlePieceAsync(pieces[i], utterance.FollowsForcedCut && i == 0, generation).ConfigureAwait(false);
+                await HandlePieceAsync(pieces[i], utterance.FollowsForcedCut && i == 0, generation, brainChanges).ConfigureAwait(false);
             }
         }
         finally
@@ -1194,7 +1210,7 @@ internal sealed class AssistantHost : IDisposable
         }
     }
 
-    private async Task HandlePieceAsync(float[] samples, bool followsForcedCut, int generation)
+    private async Task HandlePieceAsync(float[] samples, bool followsForcedCut, int generation, int brainChanges)
     {
         if (IsStale(generation) || _recognizer is null)
         {
@@ -1249,7 +1265,7 @@ internal sealed class AssistantHost : IDisposable
                 : typed.Text;
         };
 
-        await _controller.HandleTranscriptAsync(result.Text, result.Probability, followsForcedCut, cancel.Token, dictation).ConfigureAwait(false);
+        await _controller.HandleTranscriptAsync(result.Text, result.Probability, followsForcedCut, cancel.Token, dictation, brainChanges).ConfigureAwait(false);
     }
 
     private async Task ProcessQueueAsync()

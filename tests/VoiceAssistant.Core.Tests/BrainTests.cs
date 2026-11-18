@@ -233,6 +233,18 @@ public class BrainTests
     public void Only_web_links_open(string target, string? url) => Assert.Equal(url, BrainSafety.NormalizeUrl(target)?.AbsoluteUri);
 
     [Theory]
+    [InlineData("instagram.com", "https://instagram.com/")]
+    [InlineData("github.com/shivam098", "https://github.com/shivam098")]
+    [InlineData("www.example.org", "https://www.example.org/")]
+    [InlineData("report.docx", null)]
+    [InlineData("notes.md", null)]
+    [InlineData("setup.py", null)]
+    [InlineData("instagram", null)]
+    [InlineData("printer.lan", null)]
+    [InlineData("192.168.1.1", null)]
+    public void Web_addresses_said_are_told_from_file_names(string text, string? url) => Assert.Equal(url, BrainSafety.WebAddress(text)?.AbsoluteUri);
+
+    [Theory]
     [InlineData("youtube", "lofi music", "https://www.youtube.com/results?search_query=lofi%20music")]
     [InlineData("google", "weather in Bangalore", "https://www.google.com/search?q=weather%20in%20Bangalore")]
     [InlineData("spotify", "daily mix", "https://www.google.com/search?q=spotify%20daily%20mix")]
@@ -861,6 +873,216 @@ public class BrainTests
     }
 
     [Fact]
+    public async Task Open_a_site_in_a_new_tab_goes_to_the_brain_not_to_a_tab_called_after_it()
+    {
+        // The 19 Nov report: "open Instagram in new tab" was read as "switch to the tab called instagram in new".
+        FrontWindow(Chrome);
+        _brain.Replies.Enqueue(Plan("Opening Instagram in a new tab.", ("open_url", "instagram.com", "")));
+        await Say("Open Instagram in new tab.");
+        Assert.Equal(["url:https://instagram.com/"], _desktop.Actions);
+        Assert.Contains("Open Instagram in new tab.", _brain.LastRequest, StringComparison.Ordinal);
+        Assert.Equal("Opening Instagram in a new tab.", LastMessage);
+
+        // An address said as one opens directly, without the brain.
+        _desktop.Actions.Clear();
+        await Say("Open github.com in a new tab.");
+        Assert.Equal(["url:https://github.com/"], _desktop.Actions);
+        Assert.Single(_brain.Calls);
+
+        // Without the brain, a web search for it.
+        _desktop.Actions.Clear();
+        _controller.Brain = null;
+        await Say("Open Instagram in a new tab.");
+        Assert.Equal(["url:https://www.google.com/search?q=instagram"], _desktop.Actions);
+        Assert.Equal("Searched the web for “instagram”.", LastMessage);
+    }
+
+    [Fact]
+    public async Task Hey_Jarvis_alone_starts_loading_the_brain_and_unaddressed_new_tabs_are_searched()
+    {
+        var statuses = new List<StatusUpdate>();
+        var controller = new InteractionController(
+            _desktop,
+            new AppCatalog([ChromeApp, NotepadApp]),
+            new CommandParser(),
+            new ControllerOptions { WakeWordEnabled = true, Clock = () => _now })
+        {
+            Brain = _brain,
+        };
+        controller.Status += statuses.Add;
+        controller.SetListening(true);
+        FrontWindow(Chrome);
+
+        await controller.HandleTranscriptAsync("Hey Jarvis.", 0.9f);
+        Assert.Equal(1, _brain.Prepared);
+
+        _brain.Replies.Enqueue(Plan("Opening Instagram.", ("open_url", "instagram.com", "")));
+        await controller.HandleTranscriptAsync("Open Instagram in a new tab.", 0.9f);
+        Assert.Equal(["url:https://instagram.com/"], _desktop.Actions);
+
+        // Still awake, but not addressed to Jarvis: a web search instead of the brain.
+        await controller.HandleTranscriptAsync("Open YouTube in a new tab.", 0.9f);
+        Assert.Single(_brain.Calls);
+        Assert.Equal("url:https://www.google.com/search?q=youtube", _desktop.Actions[^1]);
+        Assert.Contains("Start with “Hey Jarvis”", statuses[^1].Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_new_tab_step_before_opening_a_page_is_dropped()
+    {
+        FrontWindow(Chrome);
+        _desktop.Clickable[Chrome.Handle] = [new(301, "New Tab", ElementRole.Button, R(900, 10, 40))];
+        _brain.Replies.Enqueue(Plan("Opened a new tab with Instagram.", ("press", "ctrl+t", ""), ("open_url", "instagram.com", "")));
+        await Say("Open a new tab and open Instagram.");
+        Assert.Equal(["url:https://instagram.com/"], _desktop.Actions);
+
+        _desktop.Actions.Clear();
+        _brain.Replies.Enqueue(Plan("Searching.", ("click", "New Tab", ""), ("web_search", "youtube", "lofi")));
+        await Say("Find some lofi music for me.");
+        Assert.Equal(["url:https://www.youtube.com/results?search_query=lofi"], _desktop.Actions);
+
+        // A new tab on its own is what was asked.
+        _desktop.Actions.Clear();
+        _brain.Replies.Enqueue(Plan("Opened a new tab.", ("press", "ctrl+t", "")));
+        await Say("I want a blank page.");
+        Assert.Equal(["keys:Ctrl+T"], _desktop.Actions);
+    }
+
+    [Fact]
+    public async Task The_other_tab_is_one_already_open_and_a_tab_no_one_has_goes_to_the_brain()
+    {
+        _desktop.Tabs.Add(new BrowserTab(77, "Inbox (3) - Gmail", 1, true, Chrome, R(0, 0, 200)));
+        await Say("Go to Gmail in the other tab.");
+        Assert.Equal(["tab:77"], _desktop.Actions);
+        Assert.Empty(_brain.Calls);
+
+        // "Open a new Instagram tab" (a tab name, like "the What's New tab") or a tab name that matches nothing: the brain
+        // works it out.
+        _desktop.Actions.Clear();
+        _brain.Replies.Enqueue(Plan("Opening Instagram.", ("open_url", "instagram.com", "")));
+        await Say("Open a new Instagram tab.");
+        _brain.Replies.Enqueue(Plan("Opening Instagram.", ("open_url", "instagram.com", "")));
+        await Say("Switch to the Instagram tab.");
+        Assert.Equal(["url:https://instagram.com/", "url:https://instagram.com/"], _desktop.Actions);
+        Assert.Equal(2, _brain.Calls.Count);
+    }
+
+    [Fact]
+    public async Task Apps_named_like_web_addresses_open_and_addresses_with_a_path_open_that_page()
+    {
+        var paintNet = new AppEntry { Name = "Paint.NET", Launch = "paintdotnet.exe", ProcessNames = ["paintdotnet"] };
+        _desktop.Apps["Paint.NET"] = new WindowRef(60, 6, "paintdotnet", "Untitled - Paint.NET");
+        var controller = new InteractionController(
+            _desktop,
+            new AppCatalog([ChromeApp, NotepadApp, paintNet]),
+            new CommandParser(),
+            new ControllerOptions { WakeWordEnabled = false, Clock = () => _now })
+        {
+            Brain = _brain,
+        };
+        controller.SetListening(true);
+
+        await controller.HandleTranscriptAsync("Open Paint.NET.", 0.9f);
+        await controller.HandleTranscriptAsync("Open paint.net in a new window.", 0.9f);
+        Assert.Equal(["open:Paint.NET", "open:Paint.NET"], _desktop.Actions);
+
+        // "Go to github.com" may mean a GitHub tab that's open; "github.com/shivam098" is that page, not any GitHub tab.
+        _desktop.Actions.Clear();
+        _desktop.Tabs.Add(new BrowserTab(78, "GitHub", 1, true, Chrome, R(0, 0, 200)));
+        await controller.HandleTranscriptAsync("Go to github.com.", 0.9f);
+        await controller.HandleTranscriptAsync("Go to github.com/shivam098.", 0.9f);
+        Assert.Equal(["tab:78", "url:https://github.com/shivam098"], _desktop.Actions);
+        Assert.Empty(_brain.Calls);
+    }
+
+    [Fact]
+    public async Task Without_the_brain_new_tabs_open_apps_and_never_search_for_things_on_screen()
+    {
+        FrontWindow(Chrome);
+        _controller.Brain = null;
+        await Say("Open Notepad in a new tab.");
+        Assert.Equal(["open:Notepad"], _desktop.Actions);
+
+        // Only an app called that: "Google" isn't Google Chrome. "Formula 1" is a name, not "link 1" on screen.
+        _desktop.Actions.Clear();
+        await Say("Open Google in a new tab.");
+        await Say("Open Formula 1 in a new tab.");
+        Assert.Equal(["url:https://www.google.com/search?q=google", "url:https://www.google.com/search?q=formula%201"], _desktop.Actions);
+
+        _desktop.Actions.Clear();
+        await Say("Open the first link in a new tab.");
+        await Say("Open link 3 in a new tab.");
+        await Say("Open the top result in a new tab.");
+        await Say("Open this video in a new tab.");
+        Assert.Empty(_desktop.Actions);
+        Assert.Equal("I can open websites in a new tab, not “this video”.", LastMessage);
+    }
+
+    [Fact]
+    public async Task A_new_window_of_a_site_goes_to_the_brain_not_to_an_app_named_like_it()
+    {
+        _brain.Replies.Enqueue(Plan("Opening Google.", ("open_url", "google.com", "")));
+        await Say("Open Google in a new window.");
+        Assert.Equal(["url:https://google.com/"], _desktop.Actions);
+        Assert.Single(_brain.Calls);
+    }
+
+    [Fact]
+    public async Task Tab_requests_only_ever_open_a_page()
+    {
+        // Lab 7 (19 Nov): "open a new GitHub tab" was planned as switching to the GitHub app and clicking a button there.
+        FrontWindow(Chrome);
+        _desktop.Tabs.Add(new BrowserTab(77, "Home - YouTube", 1, true, Chrome, R(0, 0, 200)));
+        _brain.Replies.Enqueue(Plan("Opened a new GitHub tab.", ("focus_window", WhatsApp.Title, ""), ("click", "New chat", "")));
+        await Say("Open a new GitHub tab.");
+        Assert.Empty(_desktop.Actions);
+        Assert.Equal("I couldn't find a tab called “new github”.", LastMessage);
+
+        _brain.Replies.Enqueue(Plan("Opened GitHub.", ("focus_window", WhatsApp.Title, ""), ("click", "New chat", "")));
+        await Say("Open GitHub in a new tab.");
+        Assert.Equal(["url:https://www.google.com/search?q=github"], _desktop.Actions);
+        Assert.Equal("Searched the web for “github”.", LastMessage);
+
+        // Anything besides opening the page is dropped, and the model's sentence with it (it may describe those steps).
+        _desktop.Actions.Clear();
+        _desktop.Clickable[Chrome.Handle] = [.. YouTubeHome, new(130, "Sign in", ElementRole.Link, R(900, 10, 60))];
+        _brain.Replies.Enqueue(Plan("Opened GitHub and signed in.", ("open_url", "github.com", ""), ("click", "Sign in", "")));
+        await Say("Open GitHub in a new tab.");
+        Assert.Equal(["url:https://github.com/"], _desktop.Actions);
+        Assert.Equal("Done.", LastMessage);
+
+        // A reply that opens nothing falls back like a plan that isn't run.
+        _desktop.Actions.Clear();
+        _brain.Replies.Enqueue(Plan("Opening Instagram in a new tab."));
+        await Say("Open Instagram in a new tab.");
+        Assert.Equal(["url:https://www.google.com/search?q=instagram"], _desktop.Actions);
+
+        // Names that only look like something on screen still reach the brain: "Formula 1" isn't "link 1".
+        _desktop.Actions.Clear();
+        _brain.Replies.Enqueue(Plan("Opening Formula 1.", ("open_url", "formula1.com", "")));
+        await Say("Open Formula 1 in a new tab.");
+        Assert.Equal(["url:https://formula1.com/"], _desktop.Actions);
+    }
+
+    [Fact]
+    public async Task A_yes_said_before_the_brain_asked_never_answers_it()
+    {
+        FrontWindow(Outlook);
+        _desktop.Clickable[Outlook.Handle] = [new(302, "Delete", ElementRole.Button, R(80, 10, 60))];
+        _brain.Replies.Enqueue(Plan("Deleted it.", ("click", "Delete", "")));
+
+        // "Get rid of this email", then "yes" at once: that "yes" began before the question was shown.
+        var beforeTheQuestion = _controller.BrainChanges;
+        await _controller.HandleTranscriptAsync("Get rid of this email.", 0.9f, brainChangesWhenSpoken: beforeTheQuestion);
+        await _controller.HandleTranscriptAsync("Yes.", 0.9f, brainChangesWhenSpoken: beforeTheQuestion);
+        Assert.Empty(_desktop.Actions);
+        Assert.Equal("Click “Delete”? Say “yes” to go ahead, or “no”.", LastMessage);
+
+        await _controller.HandleTranscriptAsync("Yes.", 0.9f, brainChangesWhenSpoken: _controller.BrainChanges);
+        Assert.Equal(["click:302"], _desktop.Actions);
+    }
+
+    [Fact]
     public async Task Ambiguous_clicks_offer_numbers()
     {
         FrontWindow(Chrome);
@@ -908,6 +1130,10 @@ public class BrainTests
         public bool Hang { get; set; }
 
         public string LastRequest => Calls[^1][^1].Content;
+
+        public int Prepared { get; private set; }
+
+        public void Prepare() => Prepared++;
 
         public async Task<string> CompleteAsync(IReadOnlyList<ChatTurn> messages, CancellationToken cancellationToken)
         {

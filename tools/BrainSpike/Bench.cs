@@ -162,7 +162,26 @@ Items in "WhatsApp": listitem "Rahul Sharma, Are we still on for tomorrow?"; edi
 """, (s, _) => Has(s, "click", "Send") || Has(s, "press", "enter")),
 
         new("do the thing", Desk, (s, _) => Has(s, "ask") && s.Count == 1),
+
+        // 19 Nov 2026: "open Instagram in a new tab" with Chrome in front. The first prompt typed the address into the
+        // address bar (refused by the app), clicked Chrome's New Tab button, or looked for an Instagram app.
+        new("open Instagram in a new tab", ChromeTabs, (s, _) => OpensSite(s, "instagram")),
+        new("open Instagram", ChromeTabs, (s, _) => OpensSite(s, "instagram") || (Has(s, "web_search", "instagram") && !Has(s, "type_text") && !Has(s, "click"))),
+        new("go to instagram.com", ChromeTabs, (s, _) => OpensSite(s, "instagram.com")),
+        new("open a new tab and open Instagram", ChromeTabs, (s, _) => OpensSite(s, "instagram")),
     ];
+
+    private const string ChromeTabs = """
+Windows (front first):
+1. "Pull requests · shivam098/thumbfree - Google Chrome" (Google Chrome), maximized, in front
+2. "WhatsApp" (WhatsApp), minimized
+3. "Inbox - Outlook" (Outlook), minimized
+Items in "Pull requests · shivam098/thumbfree - Google Chrome": tab "WhatsApp"; tab "Pull requests · shivam098/thumbfree"; tab "Inbox (3) - Gmail"; tab "Home - YouTube"; tab "Settings"; button "New Tab"; edit "Address and search bar"; button "Bookmark this tab"; link "Android: History #5 opened 2 days ago"; link "Android: live typing #4 opened 3 days ago"; button "New pull request"; edit "Search or jump to…"
+""";
+
+    /// <summary>The site opens through open_url, with nothing typed, clicked or launched on the way.</summary>
+    private static bool OpensSite(List<Step> s, string site) =>
+        Has(s, "open_url", site) && !Has(s, "type_text") && !Has(s, "click") && !Has(s, "open_app") && !Has(s, "press");
 
     /// <param name="generate">The engine: the chat messages (or the system prompt with examples plus the request) to the raw reply.</param>
     public static async Task<(int Passed, double MedianMs, double MaxMs)> RunAsync(Func<List<(string Role, string Content)>, Task<string>> generate, bool verbose)
@@ -181,7 +200,7 @@ Items in "WhatsApp": listitem "Rahul Sharma, Are we still on for tomorrow?"; edi
 
             // The app's own reader: what the bench passes is what the assistant would run.
             var plan = BrainPlan.Parse(raw, out var error);
-            List<Step> steps = plan?.Steps.Select(s => new Step(BrainPlan.NameOf(s.Tool), s.Target, s.Text)).ToList() ?? [];
+            List<Step> steps = plan is null ? [] : BrainPlan.Tidy(plan.Steps).Select(s => new Step(BrainPlan.NameOf(s.Tool), s.Target, s.Text)).ToList();
             var say = plan?.Say ?? "";
             var ok = plan is not null && c.Check(steps, say);
             if (plan is null)

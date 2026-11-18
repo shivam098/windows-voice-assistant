@@ -35,6 +35,14 @@ public interface IBrainModel
     /// when it is sleeping. Throws <see cref="OperationCanceledException"/> when cancelled.
     /// </summary>
     Task<string> CompleteAsync(IReadOnlyList<ChatTurn> messages, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// A request is probably coming (“Hey Jarvis” on its own): if the model is sleeping, start loading it in the
+    /// background so the request waits less. Never throws.
+    /// </summary>
+    void Prepare()
+    {
+    }
 }
 
 /// <summary>The tools the brain may use. Each one is an ability the assistant already has.</summary>
@@ -67,6 +75,35 @@ public sealed record BrainPlan(IReadOnlyList<BrainStep> Steps, string Say)
     };
 
     public static string NameOf(BrainTool tool) => ToolNames.First(t => t.Value == tool).Key;
+
+    private static readonly HashSet<string> NewTabChords = new(StringComparer.OrdinalIgnoreCase) { "Ctrl+T", "Ctrl+N" };
+
+    private static readonly HashSet<string> NewTabButtons = new(StringComparer.Ordinal) { "new tab", "new window", "open new tab", "open a new tab" };
+
+    /// <summary>
+    /// The steps as they will run: open_url and web_search open their own tab, so a step that only opens an empty tab or
+    /// window right before one (Ctrl+T, clicking “New Tab”) is dropped rather than leaving it behind.
+    /// </summary>
+    public static IReadOnlyList<BrainStep> Tidy(IReadOnlyList<BrainStep> steps) =>
+        steps.Where((step, i) => !(i + 1 < steps.Count && steps[i + 1].Tool is BrainTool.OpenUrl or BrainTool.WebSearch && OpensEmptyTab(step))).ToList();
+
+    /// <summary>
+    /// For “open X in a new tab” and tab names that match no tab: only the steps that open a page, as nothing else was
+    /// asked for. Null when the plan opens no page (“a new GitHub tab” planned as switching to the GitHub app and clicking
+    /// there; an answer with no steps), so the request falls back to the fixed handling; a question is kept.
+    /// </summary>
+    public static IReadOnlyList<BrainStep>? OnlyPages(IReadOnlyList<BrainStep> steps)
+    {
+        var pages = steps.Where(s => s.Tool is BrainTool.OpenUrl or BrainTool.WebSearch).ToList();
+        return pages.Count > 0 ? pages : steps.Count > 0 && steps.All(s => s.Tool == BrainTool.Ask) ? steps : null;
+    }
+
+    private static bool OpensEmptyTab(BrainStep step) => step.Tool switch
+    {
+        BrainTool.Press => BrainSafety.NormalizeChord(step.Target.Length > 0 ? step.Target : step.Text) is { } chord && NewTabChords.Contains(chord),
+        BrainTool.Click => NewTabButtons.Contains(TranscriptText.Normalize(NameMatcher.CleanElementName(step.Target.Length > 0 ? step.Target : step.Text))),
+        _ => false,
+    };
 
     /// <summary>
     /// Reads the model's reply leniently: the JSON object inside it, missing fields empty. Null when it isn't a usable
@@ -220,6 +257,19 @@ public static class BrainSafety
     // Host names that only exist on a local network (and reserved ones): never opened, typed or searched as addresses.
     private static readonly HashSet<string> LocalSuffixes = new(StringComparer.OrdinalIgnoreCase)
         { "local", "localhost", "lan", "home", "internal", "intranet", "corp", "localdomain", "arpa", "test", "invalid" };
+
+    /// <summary>
+    /// Endings that make a spoken word a web address (“instagram.com”) rather than a file (“report.docx”, “notes.md”,
+    /// “setup.py”): common generic and country domains only.
+    /// </summary>
+    private static readonly HashSet<string> WebDomains = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "com", "org", "net", "edu", "gov", "mil", "int", "io", "co", "ai", "app", "dev", "me", "tv", "info", "biz", "xyz",
+        "in", "uk", "us", "ca", "au", "nz", "de", "fr", "es", "it", "nl", "se", "no", "dk", "fi", "ch", "at", "be", "ie",
+        "pt", "br", "mx", "ar", "jp", "kr", "cn", "hk", "tw", "sg", "my", "id", "ph", "th", "vn", "pk", "bd", "lk", "np",
+        "ae", "sa", "za", "ng", "ke", "eu", "asia", "gg", "ly", "fm", "so", "to", "news", "blog", "site", "online", "store",
+        "shop", "tech", "cloud", "page", "studio", "live", "today", "world", "space", "website", "club", "top",
+    };
 
     /// <summary>Boxes inside other apps that run what is typed: VS Code's terminal, a browser's developer console.</summary>
     private static readonly string[] CommandBoxWords = ["terminal", "console", "command prompt", "command line", "powershell", "bash", "shell"];
@@ -434,6 +484,26 @@ public static class BrainSafety
         }
 
         return uri;
+    }
+
+    /// <summary>
+    /// A web address as said, like “instagram.com” or “github.com/shivam098”: one word ending in a common web domain
+    /// (.com, .org, .in…) or starting with www. or http, that <see cref="NormalizeUrl"/> allows. File names
+    /// (“report.docx”, “notes.md”) aren't addresses; neither are local or numeric hosts.
+    /// </summary>
+    public static Uri? WebAddress(string? text)
+    {
+        var t = text?.Trim().TrimEnd('.', ',', '!', '?', ';', ':') ?? string.Empty;
+        if (t.Length == 0 || t.Any(char.IsWhiteSpace) || !t.Contains('.', StringComparison.Ordinal) || NormalizeUrl(t) is not { } uri)
+        {
+            return null;
+        }
+
+        var host = uri.IdnHost.TrimEnd('.');
+        return WebDomains.Contains(host[(host.LastIndexOf('.') + 1)..]) ||
+            t.StartsWith("www.", StringComparison.OrdinalIgnoreCase) || t.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? uri
+            : null;
     }
 
     /// <summary>The site's own search results page; Google for sites without one.</summary>

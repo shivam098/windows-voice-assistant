@@ -38,10 +38,20 @@ results and measurements in `design/ai-brain.md`):
 |---|---|
 | Engine | llama.cpp `llama-server` b12483 (OpenCL/Adreno on ARM64, Vulkan on x64) on 127.0.0.1 with a random API key, one slot, 4096-token context; started on first use, stopped after `brainKeepLoadedMinutes` idle, tied to the app by a job object |
 | Model | Qwen3 4B Instruct 2507, Q4_0 GGUF (2.4 GB), downloaded only on request (Settings › AI brain), SHA-256 checked, resumable |
-| Prompt | Measured instructions + 3 examples, then a screen summary from UI Automation (6 windows listed, 2 scanned, at most 28 items, about 300 tokens); a GBNF grammar forces a JSON plan of at most 6 steps from 9 tools |
+| Prompt | Measured instructions + 4 examples (3 before v0.12.1), then a screen summary from UI Automation (6 windows listed, 2 scanned, at most 28 items, about 300 tokens); a GBNF grammar forces a JSON plan of at most 6 steps from 9 tools |
 | Entry | Unrecognised phrases, and Open/Switch/Click commands that find nothing; only when addressed to Jarvis (wake word in the phrase or just before) and above `minCommandConfidence` |
 | Safety | Enforced in code, not by the prompt: no typing or keys in command windows (including File Explorer), typing only inside web pages in browsers (by UI Automation structure, any language), no clipboard or menu keys, a spoken “yes” for destructive, send-like, program-starting and long-typing steps and for Enter outside search boxes, http(s) links on real host names only, 8 steps / 30 s, `Esc` cancels (`specs/safety-and-privacy.md`) |
 | Measured | Snapdragon X Elite: 3.2–6.4 s (median 4.8 s) from request to first action on real windows; 18/21 bench plans correct |
+
+v0.12.1 (“open Instagram in new tab”, 19 Nov 2026; `design/ai-brain.md#v0121-open-instagram-in-new-tab-19-nov-2026`):
+
+| Area | v0.12.1 implementation |
+|---|---|
+| Grammar | `OpenInNewTab` / `OpenInNewWindow` (“open X in a new / another / a second tab”, “open a new tab and open X”) before the tab grammar, which no longer reads “… in a new tab” as a tab name; “the other / second tab” stay tabs already open, as do “open a new X tab” and “the What's New tab”; web addresses (“instagram.com”, “instagram dot com”) restored from the transcript and opened directly by “open / go to” unless an app is called exactly that |
+| Brain | Prompt: open_url opens a new tab, never type addresses, a 4th example; `BrainPlan.Tidy` drops a Ctrl+T / “New Tab” step before open_url or web_search; for “in a new tab” and tab names that match no tab (addressed), `BrainPlan.OnlyPages` runs only open_url / web_search steps (dropping the model's sentence if other steps went), and a plan with none isn't run; bench 22/25 (18/21 on the original cases) |
+| Links | Opened in a new tab of the browser in front (its own executable, the address as one argument), else the default browser |
+| Latency | “Hey Jarvis” on its own starts loading a sleeping model (`IBrainModel.Prepare`); speech while the brain plans or acts is dropped with a hint (Esc stops it) |
+| Speech | `InteractionController.BrainChanges` moves when the brain starts or stops; the host reads it at `SpeechStarted` and passes it to `HandleTranscriptAsync`, which ignores speech that began before the latest change (a “yes” said before the brain asked) |
 
 ## Implementation status (v0.1.0, Phase 1 MVP)
 

@@ -70,6 +70,15 @@ public enum CommandKind
 
     /// <summary>Idea board: add a note or reminder, show a list, tick an item off (<see cref="VoiceCommand.Board"/>).</summary>
     Board,
+
+    /// <summary>
+    /// “open Instagram in a new tab”, “open a new tab and go to github.com”: that page in a new tab
+    /// (<see cref="VoiceCommand.Argument"/> is the name, or the web address as said), never a tab called “instagram in new”.
+    /// </summary>
+    OpenInNewTab,
+
+    /// <summary>“open Notepad in a new window”: a new window of the app, else the page as for <see cref="OpenInNewTab"/>.</summary>
+    OpenInNewWindow,
 }
 
 public sealed record VoiceCommand(CommandKind Kind, string? Argument = null)
@@ -359,14 +368,14 @@ public sealed partial class CommandParser
 
                 if (command is not null)
                 {
-                    return new ParsedUtterance { Commands = WithSpokenReplacement(prefixed ? WithUntrimmedEdit([command], normalized)! : [command], cleaned), WokeUp = woke, CommandText = text, FromLearnedPhrase = learned };
+                    return new ParsedUtterance { Commands = AsSaid(prefixed ? WithUntrimmedEdit([command], normalized)! : [command], cleaned), WokeUp = woke, CommandText = text, FromLearnedPhrase = learned };
                 }
 
                 if (prefixed && MatchCommandMode(text) is { } full)
                 {
                     // "Hey Jarvis, go to the first tab" while typing: any command works after the wake word, and
                     // typing stops first so nothing lands in the new place.
-                    return new ParsedUtterance { Commands = WithSpokenReplacement(WithUntrimmedEdit(full, normalized)!, cleaned), WokeUp = woke, CommandText = text, LeavesTyping = true, Spoken = spoken };
+                    return new ParsedUtterance { Commands = AsSaid(WithUntrimmedEdit(full, normalized)!, cleaned), WokeUp = woke, CommandText = text, LeavesTyping = true, Spoken = spoken };
                 }
 
                 return prefixed
@@ -399,7 +408,7 @@ public sealed partial class CommandParser
 
                 return commands is null
                     ? new ParsedUtterance { Unrecognized = text, WokeUp = woke, Spoken = spoken }
-                    : new ParsedUtterance { Commands = WithSpokenReplacement(learned ? commands : WithUntrimmedEdit(commands, normalized)!, cleaned), WokeUp = woke, CommandText = text, FromLearnedPhrase = learned, Spoken = spoken };
+                    : new ParsedUtterance { Commands = AsSaid(learned ? commands : WithUntrimmedEdit(commands, normalized)!, cleaned), WokeUp = woke, CommandText = text, FromLearnedPhrase = learned, Spoken = spoken };
             }
         }
     }
@@ -540,6 +549,7 @@ public sealed partial class CommandParser
         if (MatchFocusTarget(n, SearchTargets)) return [new VoiceCommand(CommandKind.FocusSearch)];
         if (Shortcuts.TryGetValue(n, out var shortcut)) return [new VoiceCommand(CommandKind.PressKeys, shortcut)];
         if (MatchPress(n) is { } press) return [press];
+        if (MatchOpenInNewPlace(n) is { } newPlace) return [newPlace];
         if (MatchNavigation(n) is { } navigation) return navigation;
         if (MatchEdit(n, lenient: true) is { } edit) return [edit];
 
