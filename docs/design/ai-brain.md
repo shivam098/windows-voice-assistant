@@ -136,3 +136,55 @@ Findings:
 - **Next on-device candidates:** Aion Instruct (Windows' NPU model replacing Phi Silica: no token, preview package
   and an unpackaged WPF sample at aka.ms/tryaion, Insider rollout Dec 2026) and Gemma 4 E2B/E4B once Foundry Local's
   runtime supports them. Until then, the hybrid design's cloud path is what makes Jarvis feel smart.
+
+## Spike 2 results (18 Nov 2026): llama.cpp and Aion Instruct
+
+Same laptop, same 20 cases and checks.
+- **llama.cpp** b12483 (`llama-server`, Windows ARM64). "GPU" means its OpenCL Adreno build with every layer on the GPU. Thinking is off unless noted.
+- **Aion Instruct Preview** 1.1.0.2 (the framework package, NPU), through `tools/AionBench`.
+- Medians are measured with the shared instructions and examples already in llama.cpp's prompt cache. Aion starts a new context for each request.
+- "JSON schema" means llama.cpp's own grammar for the schema. "Compact grammar" is `Engines.CompactGrammar`: the same shape with no whitespace and the keys in a fixed order.
+
+| Engine: model (download) | Runs on | Output constraint | Correct | Clean | Median | Slowest |
+|---|---|---|---|---|---|---|
+| llama.cpp: Qwen3 4B Instruct 2507, Q4_0 (2.4 GB) | GPU | JSON schema | **17/20** | **16/20** | **2.2 s** | 6.1 s |
+| ″ | GPU | compact grammar | 17/20 | 16/20 | 2.4 s | 6.1 s |
+| llama.cpp: Gemma 4 E4B QAT Q4_0 (5.2 GB) | GPU | JSON schema | **17/20** | **17/20** | 11.5 s | 27.1 s |
+| ″ | GPU | compact grammar | 14/20 | 14/20 | 3.4 s | 5.7 s |
+| llama.cpp: Gemma 4 E2B QAT Q4_0 (3.3 GB) | GPU | JSON schema | 15/20 | 15/20 | 2.4 s | 8.0 s |
+| ″ | GPU | compact grammar | 15/20 | 15/20 | 2.2 s | 5.9 s |
+| ″ | CPU | JSON schema | 15/20 | 15/20 | 4.4 s | 14.4 s |
+| ″, thinking on (the default) | CPU | JSON schema | 14/20 | 14/20 | 7.8 s | 20.2 s |
+| Aion Instruct Preview 1.1.0.2 (2.3 GB) | NPU | none (the API has none) | 7/20 | 7/20 | 2.4–2.7 s | 4.3 s |
+| *Spike 1 best:* Foundry Local Qwen3 4B | GPU | Lark grammar | 14/20 | 11/20 | 11.9 s | |
+
+Measurements:
+- **Engine matters as much as model.** Qwen3 4B took 11.9 s through Foundry Local (WebGPU) and 2.2 s through llama.cpp
+  (OpenCL), with 14 and 17 correct. The checkpoints differ: Foundry has the original Qwen3 4B, while llama.cpp ran the
+  2507 Instruct update.
+- **Gemma 4 thinks first by default.** It writes a reasoning section before the JSON. With thinking off
+  (`chat_template_kwargs.enable_thinking=false`, the bench's `--no-think`), E2B on the CPU went from 7.8 s to 4.4 s and
+  from 14 to 15 correct. The CPU runs shared the processor with downloads.
+- **E4B pretty-prints under llama.cpp's JSON-schema grammar** (newlines and indentation), producing 90–300 output
+  tokens per plan at about 12 tokens/s. With the compact grammar its median fell from 11.5 s to 3.4 s, but it got 14
+  right instead of 17. The compact grammar didn't change Qwen's or E2B's scores.
+- **Aion Instruct Preview:**
+  - 5 of 20 replies were broken JSON, because the preview API can't constrain output.
+  - Several valid plans were wrong decisions: it searched YouTube to mute a video, and clicked the tab instead of closing it.
+  - Loading took 16–22 s; requests ran at 2.4–2.7 s on the NPU. Two runs gave identical scores.
+- **Safety rule confirmed:** for "reply thanks to Rahul on WhatsApp", Qwen pressed Enter, sending the reply without
+  being asked. The confirm-before-send rule must be enforced in code (see Safety rules).
+- **Strict checks:** two failures are arguably acceptable:
+  - E2B pressed Enter instead of clicking Search.
+  - Qwen asked for clarification in `say` instead of using the `ask` tool.
+
+  The checks are unchanged so that all models stay comparable.
+- **No local model reached 18/20.** The closest at a usable speed is Qwen3 4B 2507 on llama.cpp's GPU build: 17/20 at
+  2.2 s.
+
+Open questions (not yet decided):
+- Why does E4B lose 3 cases under the compact grammar? Possible reasons:
+  - The fixed key order: when free, it wrote `say` before `steps`.
+  - Losing the whitespace tokens changes what it generates.
+  - Three borderline cases flipped.
+- Which on-device engine and model Jarvis v1 uses. The licences of the model and llama.cpp need checking before shipping.

@@ -1,9 +1,5 @@
 using System.Diagnostics;
 using System.Text.Json;
-using Betalgo.Ranul.OpenAI.ObjectModels.RequestModels;
-using Betalgo.Ranul.OpenAI.ObjectModels.SharedModels;
-using Microsoft.AI.Foundry.Local;
-using Microsoft.AI.Foundry.Local.OpenAI;
 
 /// <summary>
 /// The planner prompt, the plan format and 20 realistic requests with screen summaries and checks. A plan passes if
@@ -45,18 +41,21 @@ Request: "how are you doing"
 """, """{"steps":[],"say":"All good, ready when you are."}"""),
     ];
 
-    public static List<Betalgo.Ranul.OpenAI.ObjectModels.RequestModels.ChatMessage> Messages(string user)
+    public static List<(string Role, string Content)> Messages(string user)
     {
-        var m = new List<Betalgo.Ranul.OpenAI.ObjectModels.RequestModels.ChatMessage> { Betalgo.Ranul.OpenAI.ObjectModels.RequestModels.ChatMessage.FromSystem(System) };
+        var m = new List<(string, string)> { ("system", System) };
         foreach (var (u, p) in Examples)
         {
-            m.Add(Betalgo.Ranul.OpenAI.ObjectModels.RequestModels.ChatMessage.FromUser(u.Trim()));
-            m.Add(Betalgo.Ranul.OpenAI.ObjectModels.RequestModels.ChatMessage.FromAssistant(p));
+            m.Add(("user", u.Trim()));
+            m.Add(("assistant", p));
         }
 
-        m.Add(Betalgo.Ranul.OpenAI.ObjectModels.RequestModels.ChatMessage.FromUser(user));
+        m.Add(("user", user));
         return m;
     }
+
+    /// <summary>For engines with no assistant turns: the system prompt with the examples written out.</summary>
+    public static string SystemWithExamples => System + "\nExamples:\n" + string.Join("\n", Examples.Select(e => e.User.Trim() + "\nJSON: " + e.Plan)) + "\nReply with only the JSON object.";
     // The runtime wants a JSON schema as a string; the SDK's typed JsonSchema is ignored, so the schema goes in through
     // a Lark grammar (llguidance's %json embeds it). Output is then always valid JSON in this exact shape.
     public const string Schema = """
@@ -68,10 +67,13 @@ Request: "how are you doing"
  "say":{"type":"string","maxLength":100}}}
 """;
 
-    public static readonly ResponseFormatExtended Format = new() { Type = "lark_grammar", LarkGrammar = "start: %json " + Schema.Replace("\r", "").Replace("\n", "") };
+    public static string CompactSchema => Schema.Replace("\r", "").Replace("\n", "");
     public record Step(string Tool, string Target, string Text);
 
     public record Case(string Request, string Screen, Func<List<Step>, string, bool> Check, int MaxSteps = 3);
+
+    private static string Str(JsonElement e, string name) =>
+        e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
 
     private static bool Has(List<Step> s, string tool, string contains = "") =>
         s.Any(x => x.Tool == tool && (x.Target + " " + x.Text).Contains(contains, StringComparison.OrdinalIgnoreCase));
@@ -196,13 +198,9 @@ Items in "WhatsApp": listitem "Rahul Sharma, Are we still on for tomorrow?"; edi
         new("do the thing", Desk, (s, _) => Has(s, "ask") && s.Count == 1),
     ];
 
-    public static async Task<(int Passed, double MedianMs, double MaxMs)> RunAsync(IModel model, bool verbose)
+    /// <param name="generate">The engine: the chat messages (or the system prompt with examples plus the request) to the raw reply.</param>
+    public static async Task<(int Passed, double MedianMs, double MaxMs)> RunAsync(Func<List<(string Role, string Content)>, Task<string>> generate, bool verbose)
     {
-        var chat = await model.GetChatClientAsync();
-        chat.Settings.Temperature = 0f;
-        chat.Settings.MaxTokens = 400;
-        chat.Settings.ResponseFormat = Format;
-        chat.Settings.ToolChoice = ToolChoice.None; // a JSON schema is only enforced when no tool call is allowed
         var times = new List<double>();
         var passed = 0;
         var clean = 0;
@@ -210,10 +208,11 @@ Items in "WhatsApp": listitem "Rahul Sharma, Are we still on for tomorrow?"; edi
         {
             var user = $"Screen:\n{c.Screen}\nRequest: \"{c.Request}\"";
             var sw = Stopwatch.StartNew();
-            var r = await chat.CompleteChatAsync(Messages(user));
+            string raw;
+            try { raw = await generate(Messages(user)); }
+            catch (Exception e) { raw = "ERROR " + e.Message; }
             sw.Stop();
             times.Add(sw.Elapsed.TotalMilliseconds);
-            var raw = r.Successful ? r.Choices![0].Message.Content ?? "" : "ERROR " + r.Error?.Message;
             List<Step> steps = [];
             var say = "";
             var ok = false;
@@ -222,8 +221,8 @@ Items in "WhatsApp": listitem "Rahul Sharma, Are we still on for tomorrow?"; edi
                 var a = raw.IndexOf('{'); var b = raw.LastIndexOf('}');
                 using var doc = JsonDocument.Parse(a >= 0 && b > a ? raw[a..(b + 1)] : raw);
                 foreach (var e in doc.RootElement.GetProperty("steps").EnumerateArray())
-                    steps.Add(new(e.GetProperty("tool").GetString()!, e.GetProperty("target").GetString() ?? "", e.GetProperty("text").GetString() ?? ""));
-                say = doc.RootElement.GetProperty("say").GetString() ?? "";
+                    steps.Add(new(Str(e, "tool"), Str(e, "target"), Str(e, "text")));
+                say = Str(doc.RootElement, "say");
                 ok = c.Check(steps, say);
             }
             catch (Exception e)

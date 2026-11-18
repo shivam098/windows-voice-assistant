@@ -22,10 +22,32 @@ if (args.Length > 0 && args[0] == "api")
     return;
 }
 
-await FoundryLocalManager.CreateAsync(new Configuration { AppName = "VoiceAssistantBrainSpike" }, NullLogger.Instance);
+if (args.Length > 2 && args[0] == "llama")
+{
+    // llama <server url> <label> [-v] [--no-think] [--schema]
+    var (passed, median, max) = await Bench.RunAsync(Engines.LlamaServer(args[1], thinking: !args.Contains("--no-think"), schema: args.Contains("--schema")), args.Contains("-v"));
+    Console.WriteLine($"== {args[2]}: {passed}/{Bench.Cases.Length} passed, median {median:F0} ms, slowest {max:F0} ms");
+    return;
+}
+
+// Model cache (several GB per model). Default: %USERPROFILE%\.VoiceAssistantBrainSpike; BRAINSPIKE_CACHE moves it.
+var cache = Environment.GetEnvironmentVariable("BRAINSPIKE_CACHE");
+var config = string.IsNullOrEmpty(cache)
+    ? new Configuration { AppName = "VoiceAssistantBrainSpike" }
+    : new Configuration { AppName = "VoiceAssistantBrainSpike", AppDataDir = cache };
+await FoundryLocalManager.CreateAsync(config, NullLogger.Instance);
 var manager = FoundryLocalManager.Instance;
 if (args.Length > 0 && args[0] == "eps") { var r = await manager.DownloadAndRegisterEpsAsync((ep, p) => Console.Write($"\r{ep} {p:F0}%   ")); Console.WriteLine(); Console.WriteLine($"ok={r.Success} status={r.Status} registered={string.Join(",", r.RegisteredEps ?? [])} failed={string.Join(",", r.FailedEps ?? [])}"); }
 var catalog = await manager.GetCatalogAsync();
+if (args.Length > 0 && args[0] == "cached")
+{
+    await manager.DownloadAndRegisterEpsAsync();
+    foreach (var m in await catalog.ListModelsAsync())
+        foreach (var v in m.Variants)
+            if (await v.IsCachedAsync()) Console.WriteLine($"cached: {v.Id}");
+    manager.Dispose();
+    return;
+}
 if (args.Length > 1 && args[0] == "bench")
 {
     await manager.DownloadAndRegisterEpsAsync();
@@ -40,7 +62,7 @@ if (args.Length > 1 && args[0] == "bench")
         var load = System.Diagnostics.Stopwatch.StartNew();
         await v.LoadAsync();
         Console.WriteLine($"== {id}: loaded in {load.ElapsedMilliseconds} ms");
-        var (passed, median, max) = await Bench.RunAsync(v, args.Contains("-v"));
+        var (passed, median, max) = await Bench.RunAsync(await Engines.FoundryAsync(v), args.Contains("-v"));
         Console.WriteLine($"== {id}: {passed}/{Bench.Cases.Length} passed, median {median:F0} ms, slowest {max:F0} ms");
         await v.UnloadAsync();
     }

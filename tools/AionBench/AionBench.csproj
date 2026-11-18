@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Runs BrainSpike's 20 cases on Aion Instruct Preview (on-device, NPU). Unpackaged; needs the framework MSIX installed. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.22621.0</TargetPlatformMinVersion>
+    <SupportedOSPlatformVersion>10.0.22621.0</SupportedOSPlatformVersion>
+    <Platforms>ARM64</Platforms>
+    <PlatformTarget>ARM64</PlatformTarget>
+    <RuntimeIdentifier>win-arm64</RuntimeIdentifier>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <CsWinRTWindowsMetadata>local</CsWinRTWindowsMetadata>
+    <NoWarn>$(NoWarn);CS8618</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="AionInstructPreview.Text.Framework" Version="[1.1.1]" />
+    <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.1.5" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\BrainSpike\Bench.cs" Link="Bench.cs" />
+  </ItemGroup>
+</Project>
