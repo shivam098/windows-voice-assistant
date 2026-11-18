@@ -13,8 +13,7 @@ internal sealed partial class WindowsDesktop
 {
     private const int MaxElements = 1500;
 
-    private static readonly HashSet<string> BrowserProcesses = new(StringComparer.OrdinalIgnoreCase)
-        { "chrome", "msedge", "firefox", "brave", "opera", "vivaldi" };
+    private static readonly IReadOnlySet<string> BrowserProcesses = BrainSafety.BrowserProcesses;
 
     private static readonly (ControlType Type, ElementRole Role)[] ClickableTypes =
     [

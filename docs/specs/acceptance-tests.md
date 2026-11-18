@@ -85,6 +85,28 @@ navigation scenarios run with `tests/NavigationLab/run.ps1`.
 
 B5–B6 and B10–B11 are also covered by unit tests (`tests/VoiceAssistant.Board.Tests`, `BoardVoiceTests`).
 
+## AI brain (Settings › AI brain downloaded and ready)
+
+| # | Steps | Expected |
+|---|---|---|
+| A1 | Settings › AI brain › Download; interrupt the network midway, then Download again | Progress shows; the second run carries on where it stopped; status *Ready* when done |
+| A2 | YouTube's home page in a browser window behind a PowerShell window; “Hey Jarvis, open the MrBeast video on YouTube” | Pill: *Thinking…*; the browser comes to the front and the MrBeast video opens (about 5 s) |
+| A3 | A page with a “Delete history” button in front; “Hey Jarvis, clear my watch history”; then “no” | Pill asks “Click ‘Delete history’? Say ‘yes’…”; after “no”: *Cancelled*, nothing clicked |
+| A4 | PowerShell in front; “Hey Jarvis, type dir in this window and press enter” | Refused: “I don't type into command windows…”; nothing typed |
+| A5 | “Hey Jarvis, what's the weather in Bangalore?” | A Google (or the site's) results page opens in the default browser |
+| A6 | WhatsApp with a chat open; “Hey Jarvis, reply thanks to Rahul”; then “yes” | It types a thank-you, asks “Send it?”; after “yes” it is sent |
+| A7 | Ask something long-running, press Esc while the pill says *Thinking…* | *Stopped.*; nothing happens; listening carries on |
+| A8 | “Hey Jarvis, how are you?” | An answer on the pill; nothing else happens |
+
+A3–A8's rules are also covered by unit tests (`BrainTests`). A2–A5 run as a self-test script (`braindownload`,
+`brainwait`, then `say:` lines) on lab pages that look like YouTube, opened as a new tab in an existing Chrome window
+(a brand-new Chrome window doesn't expose its page to UI Automation).
+
+Latest Windows run (18 Nov 2026, Snapdragon X Elite, Chrome; Edge for A5): A2, A3 (“Click ‘Delete history’?”, then
+“no”), A4 and A5 passed; A1's resume was checked by stopping a download at 6.3 MB and starting it again (it carried on
+and the SHA-256 matched); “play the video about the twisted bridge” opened the right video; 3.2–6.4 s from request to
+action (median 4.8 s). A6 to A8 rely on the unit tests so far (no live WhatsApp chat was used).
+
 The Windows runner uses `stoponfail`: if the test window isn't in front (Windows blocks background apps from taking
 focus while someone is typing), the run stops instead of typing elsewhere. Run it while the PC is idle.
 

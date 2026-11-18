@@ -19,6 +19,8 @@ namespace VoiceAssistant.App;
 ///   expecttitle: &lt;text&gt;    PASS/FAIL: does the foreground window title contain the phrase (title not written)
 ///   expectfocus: &lt;name&gt;    PASS/FAIL: does the focused control's accessible name contain the phrase
 ///   expectboard: &lt;list&gt; &lt;text&gt;  PASS/FAIL: does the self-test's in-memory idea board have that note in that list
+///   braindownload          download the AI brain's missing files and wait (records ok/failed only)
+///   brainwait &lt;seconds&gt;    load the AI brain if needed and wait until it is ready; records its state
 ///   insert Paste|Type      switch the insertion method
 ///   stoponfail             stop the script at the first FAIL (use before steps that type)
 ///   clipboard              record a fingerprint (formats, hash, length) of the clipboard, not its text
@@ -36,7 +38,10 @@ internal static class SelfTest
         var board = new VoiceAssistant.Board.BoardStore(null);
         using var host = new AssistantHost(settings, ui, persistMemory: false, board: board);
         host.Status += s => output.AppendLine($"   [{s.Mode}] {s.Kind}: {Redact(s.Message)}");
-        host.ChoicesChanged += b => output.AppendLine($"   choices shown: {b?.Count ?? 0}");
+
+        // Where the numbers are, never what they label: enough to tell one button reported twice from two buttons.
+        host.ChoicesChanged += b => output.AppendLine(
+            $"   choices shown: {b?.Count ?? 0}{(b is { Count: > 0 } ? " at " + string.Join("; ", b.Select(c => $"{c.Rect.X:F0},{c.Rect.Y:F0} {c.Rect.Width:F0}x{c.Rect.Height:F0}")) : string.Empty)}");
 
         // The same on-screen feedback as the app, so screenshots of a self-test show what a user would see.
         var pill = new UI.OverlayWindow();
@@ -107,6 +112,30 @@ internal static class SelfTest
                     // Process name only: window titles can contain the user's document or page names.
                     var fg = new Platform.WindowsDesktop().GetForegroundWindow();
                     output.AppendLine($"   foreground: {fg?.ProcessName}");
+                }
+                else if (line == "braindownload")
+                {
+                    // Downloads what's missing of the AI brain (resuming) and waits; records only whether it worked.
+                    host.StartBrainDownload();
+                    await Task.Delay(500).ConfigureAwait(false);
+                    while (host.BrainDownloadProgress is not null)
+                    {
+                        await Task.Delay(500).ConfigureAwait(false);
+                    }
+
+                    output.AppendLine($"   brain download: {(host.BrainError is null && host.AiBrain?.Files.Installed == true ? "ok" : "failed")}");
+                }
+                else if (line.StartsWith("brainwait ", StringComparison.Ordinal))
+                {
+                    // "brainwait 120": load the AI brain if needed and wait until it is ready (or failed).
+                    var deadline = DateTime.UtcNow.AddSeconds(int.Parse(line[10..]));
+                    host.AiBrain?.WarmUp();
+                    while (host.AiBrain is { Availability: not (BrainAvailability.Ready or BrainAvailability.Failed or BrainAvailability.NotInstalled) } && DateTime.UtcNow < deadline)
+                    {
+                        await Task.Delay(250).ConfigureAwait(false);
+                    }
+
+                    output.AppendLine($"   brain: {host.AiBrain?.Availability.ToString() ?? "off"}");
                 }
                 else if (line == "read")
                 {

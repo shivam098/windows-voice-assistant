@@ -19,5 +19,6 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\BrainSpike\Bench.cs" Link="Bench.cs" />
+    <ProjectReference Include="..\..\src\VoiceAssistant.Core\VoiceAssistant.Core.csproj" />
   </ItemGroup>
 </Project>

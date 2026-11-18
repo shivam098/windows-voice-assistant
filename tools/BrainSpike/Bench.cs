@@ -1,63 +1,20 @@
 using System.Diagnostics;
-using System.Text.Json;
+using VoiceAssistant.Core;
 
 /// <summary>
-/// The planner prompt, the plan format and 20 realistic requests with screen summaries and checks. A plan passes if
-/// its steps do what a person would expect from the request; small differences in wording don't matter.
+/// 20 realistic requests with screen summaries and checks, run through the app's own prompt (BrainPrompt) and plan
+/// reader (BrainPlan). A plan passes if its steps do what a person would expect; small differences in wording don't matter.
 /// </summary>
 internal static class Bench
 {
-    public const string System = """
-You control a Windows PC. Turn the request into the FEWEST steps, using only these tools:
-focus_window(target: a window title from the screen) · open_app(target: app name, only if no such window is open) · open_url(target: URL) ·
-web_search(target: "youtube" or "google", text: query) · click(target: exact item name from the screen, without the role word) ·
-type_text(text) · press(target: keys like "ctrl+w", "win+up", "m") · scroll(target: "up" or "down") · ask(text: question)
-Rules: act on the window the request is about (focus it first if it isn't in front). If the item isn't on screen, web_search then click it.
-Only press enter or click Send/Delete when the user asked to send or delete. Questions and chat need no steps: just answer in "say".
-If the request is unclear, use one ask step. "text" is "" when not used. "say" is one short sentence.
-""";
+    /// <summary>For engines with no assistant turns (Aion): the app's system prompt with its examples written out.</summary>
+    public static string SystemWithExamples =>
+        BrainPrompt.System + "\nExamples:\n" +
+        string.Join("\n", BrainPrompt.Examples.Select(e => BrainPrompt.UserMessage(e.Screen, e.Request) + "\nJSON: " + e.Plan)) +
+        "\nReply with only the JSON object.";
 
-    private static readonly (string User, string Plan)[] Examples =
-    [
-        ("""
-Screen:
-Windows (front first):
-1. "Inbox - Outlook" (Outlook), maximized, in front
-2. "Spotify Premium" (Spotify), behind
-Items in "Spotify Premium": button "Play"; button "Next"; link "Daily Mix 1"; link "Liked Songs"
-Request: "play daily mix 1 on spotify"
-""", """{"steps":[{"tool":"focus_window","target":"Spotify Premium","text":""},{"tool":"click","target":"Daily Mix 1","text":""}],"say":"Playing Daily Mix 1."}"""),
-        ("""
-Screen:
-Windows (front first):
-1. "Untitled - Notepad" (Notepad), left half, in front
-Request: "find a pasta recipe on youtube"
-""", """{"steps":[{"tool":"web_search","target":"youtube","text":"pasta recipe"}],"say":"Searching YouTube for pasta recipes."}"""),
-        ("""
-Screen:
-Windows (front first):
-1. "Untitled - Notepad" (Notepad), left half, in front
-Request: "how are you doing"
-""", """{"steps":[],"say":"All good, ready when you are."}"""),
-    ];
-
-    public static List<(string Role, string Content)> Messages(string user)
-    {
-        var m = new List<(string, string)> { ("system", System) };
-        foreach (var (u, p) in Examples)
-        {
-            m.Add(("user", u.Trim()));
-            m.Add(("assistant", p));
-        }
-
-        m.Add(("user", user));
-        return m;
-    }
-
-    /// <summary>For engines with no assistant turns: the system prompt with the examples written out.</summary>
-    public static string SystemWithExamples => System + "\nExamples:\n" + string.Join("\n", Examples.Select(e => e.User.Trim() + "\nJSON: " + e.Plan)) + "\nReply with only the JSON object.";
-    // The runtime wants a JSON schema as a string; the SDK's typed JsonSchema is ignored, so the schema goes in through
-    // a Lark grammar (llguidance's %json embeds it). Output is then always valid JSON in this exact shape.
+    // Foundry Local: the runtime wants a JSON schema as a string; the SDK's typed JsonSchema is ignored, so the schema
+    // goes in through a Lark grammar (llguidance's %json embeds it). llama.cpp uses the app's BrainPrompt.Grammar.
     public const string Schema = """
 {"type":"object","additionalProperties":false,"required":["steps","say"],"properties":{
  "steps":{"type":"array","maxItems":6,"items":{"type":"object","additionalProperties":false,"required":["tool","target","text"],"properties":{
@@ -72,20 +29,19 @@ Request: "how are you doing"
 
     public record Case(string Request, string Screen, Func<List<Step>, string, bool> Check, int MaxSteps = 3);
 
-    private static string Str(JsonElement e, string name) =>
-        e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
-
     private static bool Has(List<Step> s, string tool, string contains = "") =>
         s.Any(x => x.Tool == tool && (x.Target + " " + x.Text).Contains(contains, StringComparison.OrdinalIgnoreCase));
 
     private static int Index(List<Step> s, string tool, string contains = "") =>
         s.FindIndex(x => x.Tool == tool && (x.Target + " " + x.Text).Contains(contains, StringComparison.OrdinalIgnoreCase));
 
+    // Ends with a line break so item lists added after it start on their own line (spike 1 and 2 ran without it).
     private const string Desk = """
 Windows (front first):
 1. "Windows PowerShell" (PowerShell), right half, in front
 2. "Home - YouTube - Google Chrome" (Chrome), left half
 3. "WhatsApp" (WhatsApp), minimized
+
 """;
 
     public static readonly Case[] Cases =
@@ -148,6 +104,16 @@ Items in "I Survived 50 Hours In Antarctica - YouTube - Google Chrome":
 button "Pause (k)"; button "Mute (m)"; button "Next (SHIFT+n)"; button "Full screen (f)"; button "Subscribe"; button "Like"
 """, (s, _) => Has(s, "click", "Mute") || (Has(s, "press", "m") && s.Count == 1)),
 
+        // Lab 3 (18 Nov 2026): the real screen after "go back", in the app's layout. The first prompt read "clear" as
+        // not asked to delete and clicked the browser's bookmark star instead.
+        new("clear my watch history", """
+Windows (front first):
+1. "Home - YouTube - Google Chrome" (Google Chrome), maximized, in front
+2. "Windows PowerShell" (Terminal), behind
+Items in "Home - YouTube - Google Chrome": button "Search tabs"; tab "WhatsApp"; tab "Pull requests · shivam098/thumbfree"; button "Close"; tab "Home - YouTube"; button "Ask Gemini"; edit "Address and search bar"; button "Bookmark this tab"; button "You"; edit "Search"; link "I Survived 50 Hours In Antarctica - MrBeast - 98M views"; link "Why Is This Bridge Twisted? - Veritasium - 4.1M views"; link "Lofi hip hop radio - beats to relax/study to - Lofi Girl"; button "Delete history"
+Items in "Windows PowerShell": tab "Windows PowerShell"; button "New Tab"; button "Close"; edit "Windows PowerShell"
+""", (s, _) => Has(s, "click", "Delete history") && s.Count(x => x.Tool == "click") == 1),
+
         new("open the latest pull request", """
 Windows (front first):
 1. "Pull requests · shivam098/thumbfree - Google Chrome" (Chrome), maximized, in front
@@ -206,28 +172,21 @@ Items in "WhatsApp": listitem "Rahul Sharma, Are we still on for tomorrow?"; edi
         var clean = 0;
         foreach (var c in Cases)
         {
-            var user = $"Screen:\n{c.Screen}\nRequest: \"{c.Request}\"";
             var sw = Stopwatch.StartNew();
             string raw;
-            try { raw = await generate(Messages(user)); }
+            try { raw = await generate(BrainPrompt.Messages(c.Screen, c.Request).Select(m => (m.Role, m.Content)).ToList()); }
             catch (Exception e) { raw = "ERROR " + e.Message; }
             sw.Stop();
             times.Add(sw.Elapsed.TotalMilliseconds);
-            List<Step> steps = [];
-            var say = "";
-            var ok = false;
-            try
+
+            // The app's own reader: what the bench passes is what the assistant would run.
+            var plan = BrainPlan.Parse(raw, out var error);
+            List<Step> steps = plan?.Steps.Select(s => new Step(BrainPlan.NameOf(s.Tool), s.Target, s.Text)).ToList() ?? [];
+            var say = plan?.Say ?? "";
+            var ok = plan is not null && c.Check(steps, say);
+            if (plan is null)
             {
-                var a = raw.IndexOf('{'); var b = raw.LastIndexOf('}');
-                using var doc = JsonDocument.Parse(a >= 0 && b > a ? raw[a..(b + 1)] : raw);
-                foreach (var e in doc.RootElement.GetProperty("steps").EnumerateArray())
-                    steps.Add(new(Str(e, "tool"), Str(e, "target"), Str(e, "text")));
-                say = Str(doc.RootElement, "say");
-                ok = c.Check(steps, say);
-            }
-            catch (Exception e)
-            {
-                raw = "BAD JSON (" + e.Message + "): " + raw;
+                raw = $"BAD REPLY ({error}): " + raw;
             }
 
             if (ok) passed++;

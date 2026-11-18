@@ -58,7 +58,7 @@ Speak naturally — “can you please open Notepad for me” works. If it doesn'
 2. **Click by name:** “click New on the left”, “click Library”, “select Pull requests”, “expand Sessions”. Chat lists work too: in WhatsApp Web say “click Family” or “select Bibhash Morang” (names that sound alike, like “Vivash”, still match). If two things have the same name, yellow numbers appear: say the number.
 3. **Type in the right place:** “start typing” picks the app's or site's box (or asks which); “start typing in YouTube”, “start typing in the message box”.
 4. **Show numbers:** “show numbers”, then say a number to click it; “hide numbers”.
-5. Destructive buttons (delete, merge, sign out, pay…) wait for you to say **“yes”**.
+5. Destructive buttons (delete, clear, merge, sign out, pay…) wait for you to say **“yes”**.
 6. The pill shows where you are: **📍 Google Chrome › YouTube › Search**.
 
 ### Capture ideas, to-dos and reminders
@@ -69,6 +69,14 @@ Speak naturally — “can you please open Notepad for me” works. If it doesn'
 4. In the window you can also type a note in a column's box (Enter adds it), tick notes off, drag a note to reorder it or onto another list, double-click to edit, and right-click to move, snooze or delete.
 
 Full grammar and time phrases: [specs/idea-board.md](specs/idea-board.md).
+
+### Ask for anything (the AI brain)
+
+1. Open the window's **Settings** page › *AI brain* › **Download** (one time, about 2.4 GB; you can keep using the app). The status line says *Ready* when it's done.
+2. Say **“Hey Jarvis, open the MrBeast video on YouTube”** with YouTube open in a window behind another one. The pill shows *Thinking…*, then the YouTube window comes to the front and the video opens.
+3. More to try: “mute the video”, “play the second video”, “what's the weather in Bangalore?”, “reply thanks to Rahul on WhatsApp” (it types the reply and asks **“Send it?”**: say “yes”), “tell me a joke”.
+4. Start each request with **“Hey Jarvis”** (or say “Hey Jarvis”, then the request): talk near the microphone without it is never acted on. It asks for a **“yes”** before anything that sends, deletes, buys, closes or starts a program. **Esc** stops it at any time.
+5. To keep its files on another drive, set it in the settings file before downloading, for example `"brainFolder": "D:\\VoiceAssistant\\brain"`.
 
 ---
 

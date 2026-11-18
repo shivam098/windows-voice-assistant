@@ -165,8 +165,9 @@ Score of spoken phrase *s* against a cleaned name *n* (both normalised):
 ## Destructive clicks
 
 - Names containing (as words) delete, remove, merge, discard, uninstall, erase, format, reset, sign out, log out,
-  unsubscribe, deactivate, close account, leave, block, empty trash / recycle bin, pay, buy, purchase, place order,
-  send money, transfer, don't save, close without saving, force push, revoke, terminate, shut down, restart
+  unsubscribe, deactivate, close account, leave, block, empty trash / bin / recycle bin, move to trash / bin / recycle
+  bin, clear (chat, history, browsing data…), pay, buy, purchase, place order, send money, transfer, don't save, close
+  without saving, force push, revoke, terminate, shut down, restart
   need confirmation: the element is outlined and the pill says “‘Delete account’ can't be undone. Say ‘yes’ to click it, or
   ‘no’.”
 - “yes” as the **very next utterance** within **30 s** clicks it, **only if the same window is still in front** and the

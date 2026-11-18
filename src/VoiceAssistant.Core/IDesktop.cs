@@ -16,6 +16,14 @@ public sealed record DesktopResult(bool Success, string Message, WindowRef? Wind
 public sealed record TextTargetResult(bool Success, string Message, bool? HasTrailingText = null, bool? FocusIsEditable = null);
 
 /// <summary>
+/// The focused control: its accessible name (“Search”, possibly empty), whether it takes text, and whether it is part of
+/// a web page. In a browser anything outside the page is the browser's own address, search or find bar.
+/// <see cref="AddressBar"/>: recognised as a browser's address bar by the control itself, in browsers the app doesn't
+/// know too.
+/// </summary>
+public sealed record FocusInfo(string Name, bool Editable, bool InPage, bool AddressBar = false);
+
+/// <summary>
 /// The focused field's text before the cursor. <see cref="CaretKnown"/> is false when only the whole text could be read
 /// (the cursor is then assumed to be at the end); <see cref="HasSelection"/> when text is selected (edits are refused,
 /// since typing would replace the selection); <see cref="Editable"/> false for read-only text (pages, terminal output).
@@ -113,4 +121,27 @@ public interface IDesktop
     /// <summary>Focuses the text box and verifies the focus landed in it.</summary>
     Task<TextTargetResult> FocusTextBoxAsync(UiElement box, CancellationToken cancellationToken) =>
         Task.FromResult(new TextTargetResult(false, "Choosing a text box isn't supported here."));
+
+    // The AI brain (docs/design/ai-brain.md): the open windows, bringing one to the front, opening web pages.
+
+    /// <summary>Top-level app windows (not the assistant's own), front-most first.</summary>
+    Task<IReadOnlyList<DesktopWindow>> ListWindowsAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<DesktopWindow>>([]);
+
+    /// <summary>Restores the window if minimized, brings it to the front and verifies it is there.</summary>
+    Task<DesktopResult> ActivateWindowAsync(WindowRef window, CancellationToken cancellationToken) =>
+        Task.FromResult(DesktopResult.Fail("Switching windows isn't supported here."));
+
+    /// <summary>Opens an http(s) page in the default browser; the result's window is the browser when it came to the front.</summary>
+    Task<DesktopResult> OpenUrlAsync(Uri url, CancellationToken cancellationToken) =>
+        Task.FromResult(DesktopResult.Fail("Opening web pages isn't supported here."));
+
+    /// <summary>What has the keyboard focus in the front window, for the brain's typing and Enter checks; null if unknown.</summary>
+    FocusInfo? DescribeFocus() => null;
+
+    /// <summary>
+    /// A window where text or keys run as a command (terminals, the Run box, launchers, File Explorer): the AI brain never
+    /// types or presses keys there. Platforms add what they recognise beyond <see cref="BrainSafety.IsCommandWindow"/>.
+    /// </summary>
+    bool IsCommandWindow(WindowRef window) => BrainSafety.IsCommandWindow(window);
 }

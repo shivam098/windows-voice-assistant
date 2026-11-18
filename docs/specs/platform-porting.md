@@ -32,6 +32,9 @@ limits. **Verify the starred (\*) items with a spike before committing to a desi
 | **Status pill** | Topmost no-activate WPF window | Non-activating `NSPanel` | Accessibility overlay or bubble | In-app / keyboard UI |
 | **Key shortcuts** (“copy”, “new tab”) | `SendInput` chords with Ctrl | `CGEvent` with Cmd | Global actions (back/home/recents) and node actions; most chords unavailable | Not available |
 | **Clipboard hygiene** | `ExcludeClipboardContentFromMonitorProcessing`, `CanIncludeInClipboardHistory = 0`, `CanUploadToCloudClipboard = 0` | `org.nspasteboard.TransientType`, `ConcealedType` | Avoid the clipboard; use `ACTION_SET_TEXT` | Not needed (keyboard inserts directly) |
+| **AI brain: window list, activate, open a link** | `EnumWindows` (z-order) + `GetWindowPlacement` + monitor work area; `SetForegroundWindow`; `ShellExecute` of an https URL | `CGWindowListCopyWindowInfo` / AX windows; `AXRaise`; `NSWorkspace.open` | Accessibility windows; launch intents; `ACTION_VIEW` | Not available |
+| **AI brain: is the focus inside the web page** (a browser's address bar must never get text, in any language) | UIA focused element with a `Document` ancestor | `AXFocusedUIElement` with an `AXWebArea` ancestor | Focused node inside a `WebView` / web content node | Not available |
+| **AI brain: the model** | llama.cpp `llama-server` (Adreno OpenCL on Snapdragon, Vulkan on x64) on 127.0.0.1, in a job object | llama.cpp with Metal | llama.cpp (Vulkan/OpenCL) or the platform's on-device model | Platform model (in-app) |
 
 ## Permissions to request (and explain in onboarding)
 
@@ -54,6 +57,7 @@ limits. **Verify the starred (\*) items with a spike before committing to a desi
 | Tabs by position/name | ✅ | ✅ (\* Chrome AX, Safari AppleScript) | ⚠️ next/previous only | ❌ |
 | Click by name, numbers, confirmations | ✅ | ✅ | ✅ | ❌ |
 | Start typing in a named box | ✅ | ✅ | ✅ | ❌ |
+| AI brain (anything else, planned on the device) | ✅ | ⚠️ not ported | ⚠️ not ported | ❌ |
 
 ## Suggested order for macOS
 

@@ -31,6 +31,18 @@ v0.3 (user feedback: strict keywords, 8 s window too short, “open Notepad” r
 | Browser typing | “Start typing” focuses the address/search bar unless a page text box has focus |
 | Feedback | Tones for wake / typing start / stop; command outcomes logged without content |
 
+v0.12 (AI brain: requests the fixed commands don't cover are planned by a language model on the PC; design, spike
+results and measurements in `design/ai-brain.md`):
+
+| Area | v0.12 implementation |
+|---|---|
+| Engine | llama.cpp `llama-server` b12483 (OpenCL/Adreno on ARM64, Vulkan on x64) on 127.0.0.1 with a random API key, one slot, 4096-token context; started on first use, stopped after `brainKeepLoadedMinutes` idle, tied to the app by a job object |
+| Model | Qwen3 4B Instruct 2507, Q4_0 GGUF (2.4 GB), downloaded only on request (Settings › AI brain), SHA-256 checked, resumable |
+| Prompt | Measured instructions + 3 examples, then a screen summary from UI Automation (6 windows listed, 2 scanned, at most 28 items, about 300 tokens); a GBNF grammar forces a JSON plan of at most 6 steps from 9 tools |
+| Entry | Unrecognised phrases, and Open/Switch/Click commands that find nothing; only when addressed to Jarvis (wake word in the phrase or just before) and above `minCommandConfidence` |
+| Safety | Enforced in code, not by the prompt: no typing or keys in command windows (including File Explorer), typing only inside web pages in browsers (by UI Automation structure, any language), no clipboard or menu keys, a spoken “yes” for destructive, send-like, program-starting and long-typing steps and for Enter outside search boxes, http(s) links on real host names only, 8 steps / 30 s, `Esc` cancels (`specs/safety-and-privacy.md`) |
+| Measured | Snapdragon X Elite: 3.2–6.4 s (median 4.8 s) from request to first action on real windows; 18/21 bench plans correct |
+
 ## Implementation status (v0.1.0, Phase 1 MVP)
 
 What shipped differs from the v0.2 draft below in these places; the draft is kept for the roadmap.

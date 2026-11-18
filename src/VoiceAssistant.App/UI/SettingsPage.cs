@@ -58,6 +58,13 @@ internal sealed class SettingsPage : UserControl
             Text("Paste last dictation hotkey", settings.PasteLastHotkey, (s, v) => s.PasteLastHotkey = v),
             Text("Switch dictation language hotkey", settings.DictationLanguageHotkey, (s, v) => s.DictationLanguageHotkey = v)));
 
+        stack.Children.Add(Section("AI brain (runs on this PC)",
+            Theme.Label("Ask for anything the fixed commands don't cover, like “open the MrBeast video on YouTube” or “reply thanks to Rahul on WhatsApp”. An AI model on this PC reads the window names and buttons on screen and plans the steps; nothing is sent online. It asks before sending, deleting or closing anything. Esc stops it.", 12, Theme.Muted),
+            Check("Use the AI brain for requests the fixed commands don't know", settings.BrainEnabled, (s, v) => s.BrainEnabled = v),
+            BrainStatus(),
+            Number("Unload the AI model after this many minutes unused (0 = keep it loaded)", settings.BrainKeepLoadedMinutes, 0, 1440, (s, v) => s.BrainKeepLoadedMinutes = v,
+                "While loaded it uses about 3 GB of memory; after unloading, the next request takes about 10 seconds longer.")));
+
         stack.Children.Add(Section("Microphone", Microphone()));
 
         var buttons = new WrapPanel { Margin = new Thickness(0, 4, 0, 8) };
@@ -156,6 +163,67 @@ internal sealed class SettingsPage : UserControl
         }
 
         return Theme.CardOf(panel);
+    }
+
+    /// <summary>The AI brain's state, live: downloading, loading, ready… with Download / Stop / Open folder.</summary>
+    private UIElement BrainStatus()
+    {
+        var text = Theme.Label(string.Empty, 13);
+        var download = Theme.Button("Download (one time)", (_, _) => _host.StartBrainDownload(), primary: true);
+        var stop = Theme.Button("Stop download", (_, _) => _host.CancelBrainDownload());
+        var folder = Theme.Button("Open its folder", (_, _) =>
+        {
+            if (_host.AiBrain?.Files.Folder is { } path)
+            {
+                Directory.CreateDirectory(path);
+                Process.Start(new ProcessStartInfo(path) { UseShellExecute = true })?.Dispose();
+            }
+        });
+        var buttons = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
+        buttons.Children.Add(download);
+        buttons.Children.Add(stop);
+        buttons.Children.Add(folder);
+
+        void Update()
+        {
+            var brain = _host.AiBrain;
+            var progress = _host.BrainDownloadProgress;
+            var missing = brain?.Files.MissingBytes ?? 0;
+            text.Foreground = Theme.Text;
+            text.Text = brain is null
+                ? "Off. Switch it on and restart to use it."
+                : progress is { } p
+                    ? $"Downloading… {Gb(p.Received)} of {Gb(p.Total)} ({(p.Total > 0 ? p.Received * 100 / p.Total : 0)}%). You can keep using the app."
+                    : brain.Availability switch
+                    {
+                        VoiceAssistant.Core.BrainAvailability.NotInstalled when missing > 0 => $"Not downloaded yet: {Gb(missing)}, one time. It stays on this PC ({brain.Files.Folder}).",
+                        VoiceAssistant.Core.BrainAvailability.NotInstalled => "Its files aren't where settings.json says (brainServerPath / brainModelPath).",
+                        VoiceAssistant.Core.BrainAvailability.Sleeping => $"Ready. {Brain.BrainFiles.ModelName} loads when you next ask for something.",
+                        VoiceAssistant.Core.BrainAvailability.Loading => $"Loading {Brain.BrainFiles.ModelName}…",
+                        VoiceAssistant.Core.BrainAvailability.Ready => $"Ready: {Brain.BrainFiles.ModelName}, running on this PC.",
+                        VoiceAssistant.Core.BrainAvailability.Failed => "It couldn't start. Open logs folder for details; it tries again when you next ask.",
+                        _ => string.Empty,
+                    };
+            if (progress is null && _host.BrainError is { } error)
+            {
+                text.Text = error;
+                text.Foreground = Theme.Danger;
+            }
+
+            download.Visibility = brain is not null && progress is null && missing > 0 ? Visibility.Visible : Visibility.Collapsed;
+            stop.Visibility = progress is not null ? Visibility.Visible : Visibility.Collapsed;
+            folder.Visibility = brain is not null ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        _host.BrainChanged += Update;
+        IsVisibleChanged += (_, _) => Update();
+        Update();
+        var panel = new StackPanel();
+        panel.Children.Add(text);
+        panel.Children.Add(buttons);
+        return panel;
+
+        static string Gb(long bytes) => bytes >= 1L << 30 ? $"{bytes / (double)(1L << 30):F1} GB" : $"{bytes / (double)(1 << 20):F0} MB";
     }
 
     /// <summary>A registry entry, not a setting: applied when clicked, and re-read whenever the page is shown.</summary>

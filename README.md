@@ -167,12 +167,32 @@ Say it and it's filed as a sticky note in the app window (**Idea board** page), 
 
 The board lives in its own project (`src/VoiceAssistant.Board`, no Windows code) so it can become a separate app later. Full behaviour: [docs/specs/idea-board.md](docs/specs/idea-board.md).
 
+## 5. Ask for anything — the AI brain (on this PC)
+
+Requests the commands above don't cover go to an AI model that runs **on your PC** (nothing is sent online). It reads the window titles and the names of buttons, links and boxes on screen, plans the steps, and runs them with the same abilities as the commands:
+
+| Say | It does |
+|---|---|
+| “Hey Jarvis, open the MrBeast video on YouTube” (YouTube in a window behind) | Brings that window to the front and clicks the video |
+| “…mute the video” · “…play the second video” · “…maximize this window” | Clicks Mute · clicks the second video · presses Win+Up |
+| “…reply thanks to Rahul on WhatsApp” | Opens Rahul's chat, types a thank-you, then asks “Send it?”: say **yes** (or “send it”) |
+| “…what's the weather in Bangalore?” · “…find a pasta recipe on YouTube” | Opens Google / YouTube results |
+| “…how are you?” · “…tell me a joke” | Answers on the pill |
+
+- **Get it:** Settings › *AI brain* › **Download** (one time, about 2.4 GB: [llama.cpp](https://github.com/ggml-org/llama.cpp) and the [Qwen3 4B Instruct](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507) model, both verified). On a Snapdragon PC it runs on the graphics chip; a request takes about 3–6 seconds from “Thinking…” to the first action.
+- **Safe by design:** it acts only on requests that start with **“Hey Jarvis”**, so conversation near the microphone isn't acted on. It asks for a **yes** before sending, deleting, buying, closing, opening a program or typing more than 200 characters; never types or presses keys in terminals, the Run box, File Explorer or the Start menu's search, and in a browser types only into the page, never the address bar; opens only web links; stops after 8 steps or 30 seconds; **Esc** stops it at once.
+- It's a small model: about 17 in 20 test requests come out right ([measurements](docs/design/ai-brain.md)). If it picks the wrong thing, say it more precisely, or use the commands above.
+- It unloads after an hour unused (`brainKeepLoadedMinutes`) to free about 3 GB of memory, and reloads on your next request.
+
+Full behaviour: [docs/specs/voice-commands.md](docs/specs/voice-commands.md#anything-else-the-ai-brain); design and measurements: [docs/design/ai-brain.md](docs/design/ai-brain.md).
+
 ## Safety and privacy
 
 - **Bound to one window.** Voice dictation goes only to the window where you said “start typing”. If focus moves, nothing is typed or sent; the text is kept in memory (tray → *Copy text that wasn't typed*).
 - **Refuses** password fields and windows running as administrator. Voice dictation also refuses fields it can't verify; Ctrl+Win dictation (an explicit key press) allows them.
 - **Whole-utterance commands only**: a sentence containing “send” never sends. Low-confidence commands are ignored.
-- **Clicks are checked**: destructive buttons (delete, merge, sign out, pay…) need a spoken “yes”, and nothing is clicked if another window came to the front.
+- **Clicks are checked**: destructive buttons (delete, clear, merge, sign out, pay…) need a spoken “yes”, and nothing is clicked if another window came to the front.
+- **The AI brain runs on this PC** (llama.cpp on 127.0.0.1 with a random port and key); its requests and replies are never saved. It asks before sending, deleting or closing anything, and never types into terminals or the Run box.
 - **Music and noise are dropped** by Silero before transcription; long speech while waiting for a command (meetings) is skipped.
 - Runs unelevated. Logs (`%LOCALAPPDATA%\VoiceAssistant\logs`, kept 7 days) contain only states and timings — never words.
 - No speaker identification: anyone near the microphone can say “Hey Jarvis”. Pause listening in meetings.
@@ -202,6 +222,10 @@ Most settings are on the window's **Settings** page (*Save and restart* applies 
 | `dictationEndSilenceMs` | `1100` | While voice typing, the pause that ends a phrase (longer, so a thinking pause doesn't split a sentence into separately punctuated pieces) |
 | `dictationVocabulary` | `["GitHub Copilot", "vibe coding", "iterate", …]` | Words you use often: a spelling hint for the accurate Hindi + English model (“vibe coding”, not “wife coding”) |
 | `maxCommandUtteranceMs` | `6000` | Longer speech while waiting for a command is skipped |
+| `brainEnabled` | `true` | Requests the commands don't cover go to the AI brain (once downloaded) |
+| `brainFolder` | `%LOCALAPPDATA%\VoiceAssistant\brain` | Where the AI brain's files go (e.g. another drive) |
+| `brainKeepLoadedMinutes` | `60` | Unload the AI model after this long unused (`0` keeps it loaded, about 3 GB of memory) |
+| `brainServerPath` / `brainModelPath` | — | Advanced: an existing `llama-server.exe` / GGUF model instead of the downloaded ones |
 | `hotkey` | `Ctrl+Alt+Space` | Pause/resume listening |
 | `apps` | Copilot, Notepad, Chrome, Edge, Firefox | Per-app launch, `submitKeys`, `newLineKeys`, `textArea` (`Bottom`/`Largest`), `textAreaName`, `searchKeys`, `newWindowKeys`, `newDocumentKeys` |
 
@@ -214,19 +238,21 @@ Microphone ─┬─ (Ctrl+Win held) ─────────────► 
             └─ UtteranceSegmenter (pauses) ─► Silero (drop noise, split) ─► Whisper ─► CommandParser
                                                                                     ─► InteractionController
                                                                                     ─► Win32 + UI Automation
+                                       not a command ─► screen summary ─► AI brain (llama.cpp, on this PC) ─► plan ─┘
 ```
 
 | Project | Purpose |
 |---|---|
-| `src/VoiceAssistant.Core` | Parser, wake word, formatter, segmenter, controller — platform-independent, unit-tested |
+| `src/VoiceAssistant.Core` | Parser, wake word, formatter, segmenter, controller, the AI brain's prompt, plan reader, screen summary and safety limits — platform-independent, unit-tested |
 | `src/VoiceAssistant.Board` | Idea board: notes, lists, reminder times, voice grammar, JSON store — platform-independent, unit-tested |
 | `src/VoiceAssistant.Speech` | Whisper and Silero wrappers |
-| `src/VoiceAssistant.App` | App window (Home, Idea board, Settings, Help), tray, reminder pop-ups, overlay, microphone, key hook, clipboard paste, UI Automation |
+| `src/VoiceAssistant.App` | App window (Home, Idea board, Settings, Help), tray, reminder pop-ups, overlay, microphone, key hook, clipboard paste, UI Automation, the AI brain's llama.cpp server and download |
 | `tests/VoiceAssistant.Core.Tests` | xUnit tests (the executable form of [docs/specs](docs/specs/README.md)) |
 | `tests/VoiceAssistant.Board.Tests` | xUnit tests for the idea board |
 | `tests/NavigationLab` | Test pages and a self-test script for voice navigation on real browsers |
 | `tools/SpeechBench` | Benchmarks, live microphone diagnostics, noisy-room replay |
 | `tools/ModelConvert` | Converts Hugging Face Whisper checkpoints to ggml (how the Hindi + English model is built) |
+| `tools/BrainSpike`, `tools/AionBench` | Measure language models as the AI brain with the app's own prompt (21 requests, checked automatically) |
 
 ## Develop
 
@@ -254,6 +280,7 @@ Regenerate the logo with `powershell -File assets\make-logo.ps1`. See the **[ste
 - English, plus Hindi + English dictation (Alt+Shift+H); voice commands are English only. A headset works best in noisy rooms.
 - Clicking by name needs apps that expose accessibility names (most apps and all major browsers do). Apps drawn entirely on a canvas (some games, remote desktops) can't be clicked yet; there's no OCR or mouse grid.
 - Inline “scratch that” is rule-based: it removes the phrase before it, not a single corrected word (“meet at 2, scratch that, 3” keeps only “3”). For precise fixes say “delete the last two words” or “replace the word 2 with 3”. Spoken edits follow fixed phrasings (see [voice-commands.md](docs/specs/voice-commands.md#editing-what-you-typed)); Wispr's AI rewrites and tones need a language model and aren't included.
+- The AI brain answers on the pill but doesn't speak yet, plans from one look at the screen (a step that opens a new page can't click things it hasn't seen), and doesn't remember the previous request (“no, the second one”). The sentence it shows at the end is the model's own and can be wrong (in a test it said “typed into the address bar” when, correctly, it had typed into the page's search box); the pill's step messages show what was actually done. A brand-new Chrome window doesn't show its page to Windows accessibility, so the brain (like clicking by name) can't see its links; tabs in windows that were already open work. It is measured on Snapdragon (ARM64); the x64 download (Vulkan, falling back to the CPU) starts and answers but hasn't been measured on an Intel or AMD PC.
 - Voice dictation inserts text after each pause (~1 s), not word by word. Ctrl+Win dictation inserts when you tap `Ctrl`+`Win` again.
 - `Ctrl+Win` combinations used by Windows (e.g. `Ctrl+Win+D`) still work; the recording is discarded.
 - Plain “Copilot” opens the Start menu app named *Copilot* (Microsoft Copilot). Say “GitHub Copilot”.

@@ -602,7 +602,8 @@ internal sealed partial class WindowsDesktop : IDesktop
         }
     }
 
-    private async Task<DesktopResult> ActivateAsync(WindowRef window, string appName, CancellationToken ct)
+    /// <param name="logName">What the log calls the window, when <paramref name="appName"/> could be a title (logs never hold titles).</param>
+    private async Task<DesktopResult> ActivateAsync(WindowRef window, string appName, CancellationToken ct, string? logName = null)
     {
         if (Win32.IsIconic(window.Handle))
         {
@@ -622,7 +623,7 @@ internal sealed partial class WindowsDesktop : IDesktop
             }
         }
 
-        Log.Warn($"activation of {appName} refused by Windows");
+        Log.Warn($"activation of {logName ?? appName} refused by Windows");
         return DesktopResult.Fail($"Windows didn't let me bring {appName} to the front. Click it once, then say “start typing”.");
     }
 

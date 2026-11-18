@@ -423,7 +423,7 @@ public static class TargetResolver
     /// Tabs by position (“first tab” = in the front-most browser window) or by cleaned title. Titles are long, so a
     /// name must match whole words (“YouTube” in “Lofi beats - YouTube”).
     /// </summary>
-    public static Resolution<BrowserTab> ResolveTab(IReadOnlyList<BrowserTab> tabs, ElementTarget target)
+    public static Resolution<BrowserTab> ResolveTab(IReadOnlyList<BrowserTab> tabs, ElementTarget target, int minScore = NameMatcher.Words - 10)
     {
         if (tabs.Count == 0)
         {
@@ -439,7 +439,7 @@ public static class TargetResolver
 
         var scored = tabs
             .Select(t => (Tab: t, Score: TabScore(target.Name, t.Title)))
-            .Where(x => x.Score >= NameMatcher.Words - 10)
+            .Where(x => x.Score >= minScore)
             .ToList();
         if (scored.Count == 0)
         {
@@ -499,7 +499,8 @@ public static class TargetResolver
             "delete", "remove", "merge", "discard", "uninstall", "erase", "format", "reset", "sign out", "log out", "logout",
             "signout", "unsubscribe", "deactivate", "close account", "leave", "block", "empty trash", "empty recycle bin",
             "pay", "buy", "purchase", "place order", "send money", "transfer", "dont save", "do not save", "close without saving",
-            "force push", "revoke", "terminate", "shut down", "restart",
+            "force push", "revoke", "terminate", "shut down", "restart", "clear", "move to trash", "move to bin",
+            "move to recycle bin", "empty bin",
         ];
         return words.Any(w => n == w || n.StartsWith(w + " ", StringComparison.Ordinal) || n.EndsWith(" " + w, StringComparison.Ordinal) || n.Contains(" " + w + " ", StringComparison.Ordinal));
     }
